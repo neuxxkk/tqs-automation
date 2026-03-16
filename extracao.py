@@ -5,27 +5,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-# ==============================================================================
-# Fase 1: Preparação e Inicialização
-# ==============================================================================
-
 TOLERANCIA = 0.5  # tolerância em cm para comparação de cobrimento
 CORES_BORDA_VIGA = {7, 1}  # cor branca (7) e vermelha (1) - faces e delimitadores da viga
-ARQUIVO_EXCEL = os.path.join(os.path.expanduser("~"), "OneDrive", "Desktop", "relatoriostqs", "relatorio_ferros.xlsx")
-NOMEDWG = "desenho.DWG"
-
-
-def inicializar_dwg(nomedwg):
-    """Fase 1: Abre o desenho e configura a tolerância geométrica."""
-    TQSGeo.SetPrecision(TOLERANCIA)
-
-    dwg = TQSDwg.Dwg()
-    if dwg.file.Open(nomedwg) != 0:
-        print(f"Erro: Não foi possível abrir o desenho {nomedwg}")
-        return None
-
-    print(f"Desenho '{nomedwg}' aberto com sucesso.")
-    return dwg
 
 
 # ==============================================================================
@@ -33,7 +14,6 @@ def inicializar_dwg(nomedwg):
 # ==============================================================================
 
 def mapear_contorno(dwg):
-    """Fase 2: Extrai todos os segmentos de reta da borda da viga."""
     segmentos = []
 
     dwg.iterator.Begin()
@@ -43,7 +23,6 @@ def mapear_contorno(dwg):
         if itipo == TQSDwg.DWGTYPE_EOF:
             break
 
-        # Filtra apenas linhas e polilinhas
         if itipo not in (TQSDwg.DWGTYPE_LINE, TQSDwg.DWGTYPE_POLYLINE):
             continue
 
@@ -78,7 +57,6 @@ def mapear_contorno(dwg):
 # ==============================================================================
 
 def extrair_ferros(dwg):
-    """Fase 3: Lê todos os ferros inteligentes (IPOFER) e extrai geometria."""
     ferros = []
 
     dwg.iterator.Begin()
@@ -95,7 +73,6 @@ def extrair_ferros(dwg):
         rebar = dwg.iterator.smartRebar
         cobrimento = rebar.cover
 
-        # Extrair informações de tabela (posição, bitola, etc.)
         info_descr = []
         numdescr = rebar.RebarScheduleNumDescr()
         for idescr in range(numdescr):
@@ -104,51 +81,29 @@ def extrair_ferros(dwg):
             iluvai, iluvaf = rebar.RebarScheduleInfo(idescr)
             info_descr.append({
                 "ipos": ipos,
-                "bitola": bitola,
                 "nfer": nfer,
-                "compr": compr,
-                "observ": observ,
             })
 
-        # Extrair vértices de cada inserção do ferro
+        # Extrair vérices de cada inserção do ferro
         pontos_insercao = []
         n_ins = rebar.GetInsertionNumber()
         for idx_ins in range(n_ins):
             resultado = rebar.GetInsertionPoints(idx_ins)
-            # A API pode retornar uma tupla (npts, ...) em vez de um inteiro
             npts = resultado[0] if isinstance(resultado, tuple) else resultado
             for ipt in range(npts):
                 pt = rebar.GetInsertionPoint(idx_ins, ipt)
-                # A API pode retornar (x, y), (x, y, z) ou (status, x, y, ...)
                 x, y = pt[0], pt[1]
                 pontos_insercao.append((x, y))
-
-        # Extrair informações de faixas de distribuição
-        faixas = []
-        numfaixas = rebar.GetRebarDistrNum()
-        for ifaixa in range(numfaixas):
-            icfes1, angfai, xpt1, ypt1, xpt2, ypt2, xcot, ycot, \
-            ifdcotc, iflnfr, iflpos, iflbit, iflesp, \
-            icentr, iquebr, ordem, k32vigas, k41vigas, \
-            ilinexten, ilinchama, itpponta, espac, escxy = rebar.GetRebarDistrInfo(ifaixa)
-            comp_faixa = math.hypot(xpt2 - xpt1, ypt2 - ypt1)
-            faixas.append({
-                "nferros": icfes1,
-                "angulo": angfai,
-                "comprimento": comp_faixa,
-                "espacamento": espac,
-            })
 
         # Verificar alternância pelo método correto da API
         alternado = rebar.alternatingMode == TQSDwg.ICPCAL
         fator_alternancia = rebar.alternatingFactor if alternado else None
 
         ferros.append({
-            "rebar": rebar,
             "cobrimento": cobrimento,
-            "info_descr": info_descr,
+            "info_descr": info_descr, 
             "pontos": pontos_insercao,
-            "faixas": faixas,
+            "espacamento": rebar.spacing,
             "alternado": alternado,
             "fator_alternancia": fator_alternancia,
         })
@@ -191,7 +146,6 @@ def ponto_na_borda(xp, yp, segmentos, cobrimento):
 
 
 def classificar_ferros(ferros, segmentos):
-    """Fase 4: Classifica cada ferro como 'borda', 'alternado' ou 'interno simples'."""
     for ferro in ferros:
         cobrimento = ferro["cobrimento"]
         ferro["eh_borda"] = any(
@@ -209,8 +163,7 @@ def classificar_ferros(ferros, segmentos):
 # Fase 5: Relatório 
 # ==============================================================================
 
-def gerar_relatorio(ferros):
-    """Fase 5: Gera planilha Excel com todos os ferros agrupados por posição."""
+def gerar_relatorio(ferros, arquivo_excel):
     ferros_ordenados = sorted(ferros, key=lambda f: f["info_descr"][0]["ipos"] if f["info_descr"] else 999)
 
     wb = Workbook()
@@ -222,9 +175,7 @@ def gerar_relatorio(ferros):
     azul_claro= PatternFill("solid", fgColor="BDD7EE")
     verde     = PatternFill("solid", fgColor="C6EFCE")
     amarelo   = PatternFill("solid", fgColor="FFEB9C")
-    laranja   = PatternFill("solid", fgColor="F4B183")
     vermelho  = PatternFill("solid", fgColor="FF9999")
-    negrito   = Font(bold=True)
     centro    = Alignment(horizontal="center", vertical="center")
     borda_fina = Border(
         left=Side(style="thin"), right=Side(style="thin"),
@@ -263,8 +214,8 @@ def gerar_relatorio(ferros):
             tipo = "INTERNO"
 
         nfer = ferro["info_descr"][0]["nfer"] if ferro["info_descr"] else 0
-        comp_faixa_total = sum(f["comprimento"] for f in ferro["faixas"])
-        espacamento = comp_faixa_total / (nfer - 1) if nfer > 1 else 0.0
+        espacamento = ferro["espacamento"]
+        comp_faixa_total = nfer * espacamento
 
         # Linha separadora entre grupos de posição
         ipos = ferro["info_descr"][0]["ipos"] if ferro["info_descr"] else None
@@ -315,33 +266,38 @@ def gerar_relatorio(ferros):
     for i, w in enumerate(larguras, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
-    os.makedirs(os.path.dirname(ARQUIVO_EXCEL), exist_ok=True)
-    wb.save(ARQUIVO_EXCEL)
-    print(f"Planilha gerada: '{ARQUIVO_EXCEL}'")
+    os.makedirs(os.path.dirname(arquivo_excel), exist_ok=True)
+    wb.save(arquivo_excel)
+    print(f"Planilha gerada: '{arquivo_excel}'")
 
-
-# ==============================================================================
-# Ponto de entrada principal
-# ==============================================================================
 
 # ==============================================================================
 # Ponto de entrada via botão do TQS (EAG)
 # ==============================================================================
 
-def rodar_script(eag, tqsjan):
+def rodar_script(eag=None, tqsjan=None):
     """Função chamada pelo botão do TQS. Usa o desenho já aberto no editor."""
-    eag.msg.Print("=== Identificação de Ferros de Borda ===")
+    # Em algumas configurações do EAG, a função é chamada sem parâmetros.
+    if eag is None:
+        eag = TQSEag.TQSEag()
+    if tqsjan is None:
+        tqsjan = TQSJan.TQSJan()
+
+    eag.msg.Print("=== Identificacao de Ferros de Borda ===")
 
     TQSGeo.SetPrecision(TOLERANCIA)
 
-    # Usa o desenho já aberto na tela (desenho.DWG)
-    dwg = tqsjan.dwg
+    # Desenho aberto
+    dwg = tqsjan.dwg 
 
-    # Fase 2: Mapeamento do contorno da viga
+    dwg_path = dwg.GetPathName()
+    dwg_dir = os.path.dirname(dwg_path)
+    arquivo_excel = os.path.join(dwg_dir, "relatorio_ferros.xlsx")
+
     segmentos = mapear_contorno(dwg)
     if not segmentos:
         eag.msg.Print("Aviso: Nenhum segmento de contorno encontrado. "
-                      "Verifique a cor/nível da borda da viga.")
+                      "Verifique a cor/nivel da borda da viga.")
         return
 
     # Fase 3: Extração dos ferros inteligentes
@@ -354,42 +310,10 @@ def rodar_script(eag, tqsjan):
     classificar_ferros(ferros, segmentos)
 
     # Fase 5: Relatório
-    gerar_relatorio(ferros)
+    gerar_relatorio(ferros, arquivo_excel)
 
-    eag.msg.Print(f"Relatório gerado com sucesso: {ARQUIVO_EXCEL}")
-
-
-# ==============================================================================
-# Ponto de entrada standalone (fora do TQS)
-# ==============================================================================
-
-def main():
-    print("=== Identificação de Ferros de Borda ===\n")
-
-    # Fase 1: Inicialização
-    dwg = inicializar_dwg(NOMEDWG)
-    if dwg is None:
-        return
-
-    # Fase 2: Mapeamento do contorno da viga
-    segmentos = mapear_contorno(dwg)
-    if not segmentos:
-        print("Aviso: Nenhum segmento de contorno encontrado. "
-              "Verifique a cor/nível da borda da viga.")
-        return
-
-    # Fase 3: Extração dos ferros inteligentes
-    ferros = extrair_ferros(dwg)
-    if not ferros:
-        print("Aviso: Nenhum ferro inteligente encontrado no desenho.")
-        return
-
-    # Fase 4: Cruzamento geométrico
-    classificar_ferros(ferros, segmentos)
-
-    # Fase 5: Relatório
-    gerar_relatorio(ferros)
+    eag.msg.Print(f"Relatorio gerado com sucesso: {arquivo_excel}")
 
 
 if __name__ == "__main__":
-    main()
+    rodar_script()

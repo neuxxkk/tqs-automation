@@ -38,12 +38,14 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 |---|---|
 | **TQS** | Software de projeto estrutural com suporte a scripts Python (módulos `TQSDwg`, `TQSGeo`, `TQSEag`, `TQSJan`) |
 | **Python 3** | Interpretador Python (geralmente já embutido no TQS) |
+| **TQSPython** | Pacotes para manipulação do TQS (Python) |
 | **openpyxl** | Geração de planilhas Excel |
 
-Instale a biblioteca `openpyxl` caso ainda não esteja disponível:
+Instale a biblioteca `openpyxl` e TQSPython (whl na root do TQSW) caso ainda não esteja disponível:
 
 ```bash
 pip install openpyxl
+pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
 ```
 
 ---
