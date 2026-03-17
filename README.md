@@ -46,6 +46,8 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 | Biblioteca / pacote | Versão | Obrigatória | Finalidade |
 |---|---|---|---|
 | **Python** | `3.13.12` | Sim | Ambiente Python identificado neste workspace |
+  `https://www.python.org/downloads/release/python-31312/`
+  - Adicionar PIP e variavel de ambiente
 | **TQSPythonInterface** | `2.1.7` | Sim | Disponibiliza o módulo `TQS` e os submódulos `TQSDwg`, `TQSGeo`, `TQSEag` e `TQSJan` |
 | **openpyxl** | `>= 3.1.0` | Sim | Geração e formatação da planilha Excel |
 | **Pillow** | `>= 10.0.0` | Sim | Suporte a imagens PNG inseridas na planilha via `openpyxl.drawing.image.Image` |
@@ -61,10 +63,6 @@ Bibliotecas importadas diretamente pelo script `extracao_tabela_ferro.py`:
 ## Instalação
 
 1. **Clone ou baixe** este repositório:
-
-   ```bash
-   git clone https://github.com/neuxxkk/tqs-automation.git
-   ```
 
 2. Instale as dependências Python necessárias:
 
