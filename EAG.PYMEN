@@ -1,9 +1,8 @@
 [PYTHON]
-extracao.py
+extracao_tabela_ferro.py
 
 [CMD]
-ID_EXTRACAO_FERROS,extracao.py,rodar_script
-Extrai ferros do desenho aberto e gera relatório Excel
+ID_EXTRACAO_FERROS,extracao_tabela_ferro.py,rodar_script
 
 [MENU]
 SUBMENU,Relatorio Ferros
