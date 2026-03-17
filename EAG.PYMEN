@@ -1,10 +1,13 @@
 [PYTHON]
 extracao_tabela_ferro.py
+gerar_porco.py
 
 [CMD]
 ID_EXTRACAO_FERROS,extracao_tabela_ferro.py,rodar_script
+ID_GERAR_PORCO,gerar_porco.py,rodar_script
 
 [MENU]
 SUBMENU,Relatorio Ferros
 MENUITEM,ID_EXTRACAO_FERROS,&Extrair Ferros e Gerar Relatorio
+MENUITEM,ID_GERAR_PORCO,&Gerar Porco
 FIMSUBMENU
