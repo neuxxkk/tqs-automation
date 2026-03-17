@@ -8,6 +8,7 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 - [Funcionalidades](#funcionalidades)
 - [Pré-requisitos](#pré-requisitos)
+- [Dependências](#dependências)
 - [Instalação](#instalação)
 - [Como usar](#como-usar)
   - [Via botão no TQS (EAG)](#via-botão-no-tqs-eag)
@@ -34,19 +35,26 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 ## Pré-requisitos
 
-| Dependência | Descrição |
-|---|---|
-| **TQS** | Software de projeto estrutural com suporte a scripts Python (módulos `TQSDwg`, `TQSGeo`, `TQSEag`, `TQSJan`) |
-| **Python 3** | Interpretador Python (geralmente já embutido no TQS) |
-| **TQSPython** | Pacotes para manipulação do TQS (Python) |
-| **openpyxl** | Geração de planilhas Excel |
+- TQS instalado e com suporte à execução de scripts Python
+- Python compatível com a interface do TQS
+- Acesso ao pacote TQSPython da instalação do TQS
 
-Instale a biblioteca `openpyxl` e TQSPython (whl na root do TQSW) caso ainda não esteja disponível:
+---
 
-```bash
-pip install openpyxl
-pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
-```
+## Dependências
+
+| Biblioteca / pacote | Versão | Obrigatória | Finalidade |
+|---|---|---|---|
+| **Python** | `3.13.12` | Sim | Ambiente Python identificado neste workspace |
+| **TQSPythonInterface** | `2.1.7` | Sim | Disponibiliza o módulo `TQS` e os submódulos `TQSDwg`, `TQSGeo`, `TQSEag` e `TQSJan` |
+| **openpyxl** | `>= 3.1.0` | Sim | Geração e formatação da planilha Excel |
+| **Pillow** | `>= 10.0.0` | Sim | Suporte a imagens PNG inseridas na planilha via `openpyxl.drawing.image.Image` |
+
+Bibliotecas importadas diretamente pelo script `extracao_tabela_ferro.py`:
+
+- **Bibliotecas padrão do Python**: `math`, `os`
+- **Bibliotecas do TQS / TQSPython**: `TQS.TQSDwg`, `TQS.TQSGeo`, `TQS.TQSEag`, `TQS.TQSJan`
+- **Bibliotecas externas**: `openpyxl`, `Pillow`
 
 ---
 
@@ -58,9 +66,15 @@ pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
    git clone https://github.com/neuxxkk/tqs-automation.git
    ```
 
-2. Copie os arquivos `extracao.py` e `EAG.PYMEN` para a pasta de scripts Python do seu projeto TQS.
+2. Instale as dependências Python necessárias:
 
-3. No TQS, carregue o arquivo `EAG.PYMEN` para registrar o botão no menu.
+  ```bash
+  pip install openpyxl
+  pip install pillow
+  pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
+  ```
+
+3. Copie a pasta `\scripts` e o arquivo `EAG.PYMEN` para a pasta `C:\TQSW\EXEC\Python` do seu projeto TQS.
 
 ---
 
@@ -74,18 +88,18 @@ pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
 4. O arquivo Excel será salvo automaticamente em:
 
    ```
-   ~/OneDrive/Desktop/relatoriostqs/relatorio_ferros.xlsx
+  <pasta do DWG>/Ferro Corrido - <nome do desenho>.xlsx
    ```
 
 ### Modo standalone (linha de comando)
 
 Para rodar fora do TQS (desde que os módulos TQS estejam disponíveis no ambiente):
 
-1. Defina o nome do arquivo DWG na constante `NOMEDWG` em `extracao.py`.
+1. Garanta que o ambiente Python tenha acesso ao módulo `TQS` fornecido pelo TQSPython.
 2. Execute:
 
    ```bash
-   python extracao.py
+  python extracao_tabela_ferro.py
    ```
 
 ---
@@ -103,7 +117,7 @@ Inicializa  Contorno   Extrai     Classifica  Gera
 | Fase | Nome | Descrição |
 |------|------|-----------|
 | **1** | Inicialização | Abre o arquivo DWG e configura a tolerância geométrica (padrão: 0,5 cm). |
-| **2** | Contorno da Viga | Extrai todos os segmentos de linha e polilinha com cores de borda (branca `7` e vermelha `1`) que delimitam a seção da viga. |
+| **2** | Contorno da Viga | Extrai todos os segmentos de linha e polilinha dos níveis `228` (viga) e `227` (pilar) para delimitar a seção analisada. |
 | **3** | Extração dos Ferros | Lê todos os objetos `IPOFER` (ferros inteligentes) do desenho, extraindo posição, bitola, quantidade, comprimento, cobrimento e faixas de distribuição. |
 | **4** | Classificação Geométrica | Calcula a distância de cada ponto de inserção do ferro aos segmentos de contorno. Ferros dentro do cobrimento + tolerância são marcados como **BORDA**; os demais são separados em **ALTERNADO** ou **INTERNO**. |
 | **5** | Geração do Relatório | Cria uma planilha Excel organizada por posição, com cabeçalhos, linhas coloridas por tipo e linhas de totalização. |
@@ -133,14 +147,13 @@ Ao final da planilha, são exibidos os totais de comprimento por categoria:
 
 ## Configurações
 
-As principais constantes estão no início de `extracao.py`:
+As principais constantes estão no início de `extracao_tabela_ferro.py`:
 
 | Constante | Padrão | Descrição |
 |---|---|---|
 | `TOLERANCIA` | `0.5` | Tolerância geométrica em cm para comparação de cobrimento |
-| `CORES_BORDA_VIGA` | `{7, 1}` | Cores DWG das linhas de borda (branca e vermelha) |
-| `ARQUIVO_EXCEL` | `~/OneDrive/Desktop/relatoriostqs/relatorio_ferros.xlsx` | Caminho de saída da planilha |
-| `NOMEDWG` | `"desenho.DWG"` | Nome do arquivo DWG (modo standalone) |
+| `NIVEL_VIGA` | `228` | Nível DWG considerado como contorno da viga |
+| `NIVEL_PILAR` | `227` | Nível DWG adicional considerado no mapeamento do contorno |
 
 ---
 
