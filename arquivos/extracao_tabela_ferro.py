@@ -258,7 +258,11 @@ def gerar_relatorio(ferros, arquivo_excel):
     primeira_coluna_imagem = 9  # duas colunas de espaçamento após a tabela (A:E)
     coluna_imagem = get_column_letter(primeira_coluna_imagem)
     primeira_linha_imagem = 12
-    imagens_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "imgs"))
+    base_dir = os.path.dirname(__file__)
+    candidatos_imgs = [
+        os.path.join(base_dir, "imgs"),
+    ]
+    imagens_dir = next((p for p in candidatos_imgs if os.path.isdir(p)), candidatos_imgs[-1])
     caminho_det_s = os.path.join(imagens_dir, "detS.png")
     caminho_det_al = os.path.join(imagens_dir, "detAL.png")
 
