@@ -2,10 +2,7 @@ import math
 import os
 from datetime import datetime
 from TQS import TQSDwg, TQSGeo, TQSEag, TQSJan
-from openpyxl.drawing.image import Image
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+import xlsxwriter
 
 TOLERANCIA = 10
 NIVEL_VIGA = 228
@@ -169,42 +166,48 @@ def classificar_ferros(ferros, segmentos):
 def gerar_relatorio(ferros, arquivo_excel):
     ferros_ordenados = sorted(ferros, key=lambda f: f["info_descr"][0]["ipos"] if f["info_descr"] else 999)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Ferros"
+    os.makedirs(os.path.dirname(arquivo_excel), exist_ok=True)
+    try:
+        wb = xlsxwriter.Workbook(arquivo_excel)
+    except Exception:
+        return None
 
-    cinza = PatternFill(patternType="solid", fgColor="FFD9D9D9", bgColor="FFFFFFFF")
-    azul_claro = PatternFill(patternType="solid", fgColor="FFBDD7EE", bgColor="FFFFFFFF")
-    verde = PatternFill(patternType="solid", fgColor="FFC6EFCE", bgColor="FFFFFFFF")
-    amarelo = PatternFill(patternType="solid", fgColor="FFFFEB9C", bgColor="FFFFFFFF")
-    vermelho = PatternFill(patternType="solid", fgColor="FFFF9999", bgColor="FFFFFFFF")
-    centro = Alignment(horizontal="center", vertical="center")
-    borda_fina = Border(
-        left=Side(style="thin"),
-        right=Side(style="thin"),
-        top=Side(style="thin"),
-        bottom=Side(style="thin"),
-    )
+    ws = wb.add_worksheet("Ferros")
 
-    def estilizar(cell, fill=None, bold=False, align=True):
-        if fill:
-            cell.fill = fill
+    # --- Formatos ---
+    def fmt(bg=None, bold=False):
+        props = {"align": "center", "valign": "vcenter", "border": 1}
+        if bg:
+            props["bg_color"] = bg
         if bold:
-            cell.font = Font(bold=True)
-        if align:
-            cell.alignment = centro
-        cell.border = borda_fina
+            props["bold"] = True
+        return wb.add_format(props)
 
+    f_cinza    = fmt("#D9D9D9", bold=True)
+    f_azul     = fmt("#BDD7EE")
+    f_verde    = fmt("#C6EFCE", bold=True)
+    f_amarelo  = fmt("#FFEB9C")
+    f_vermelho = fmt("#FF9999")
+    f_verde_lbl = fmt("#C6EFCE", bold=True)
+    f_amarelo_lbl = fmt("#FFEB9C", bold=True)
+    f_azul_lbl    = fmt("#BDD7EE", bold=True)
+    f_vermelho_lbl = fmt("#FF9999", bold=True)
+
+    cores_tipo = {
+        "BORDA":    f_vermelho,
+        "ALTERNADO": f_amarelo,
+        "INTERNO":  f_azul,
+    }
+
+    # --- Cabeçalho ---
     cabecalho = ["Posição", "Quantidade", "Espaçamento (cm)", "Compr. Faixa (cm)", "Tipo"]
-    ws.append(cabecalho)
-    for col, _ in enumerate(cabecalho, start=1):
-        estilizar(ws.cell(row=1, column=col), fill=cinza, bold=True)
+    for col, h in enumerate(cabecalho):
+        ws.write(0, col, h, f_cinza)
 
-    cores_tipo = {"BORDA": vermelho, "ALTERNADO": amarelo, "INTERNO": azul_claro}
-
+    linha = 1
     soma_geral = 0.0
-    soma_alt = 0.0
-    soma_simp = 0.0
+    soma_alt   = 0.0
+    soma_simp  = 0.0
     soma_borda = 0.0
     pos_anterior = None
 
@@ -222,14 +225,17 @@ def gerar_relatorio(ferros, arquivo_excel):
 
         ipos = ferro["info_descr"][0]["ipos"] if ferro["info_descr"] else None
         if pos_anterior is not None and ipos != pos_anterior:
-            ws.append(["", "", "", "", ""])
+            linha += 1  # linha em branco entre posicoes
         pos_anterior = ipos
 
+        fill = cores_tipo[tipo]
         for info in ferro["info_descr"]:
-            ws.append([f"N{info['ipos']}", info["nfer"], int(round(espacamento)), int(round(comp_faixa_total)), tipo])
-            fill = cores_tipo["BORDA" if ferro["eh_borda"] else ("ALTERNADO" if ferro["alternado"] else "INTERNO")]
-            for col in range(1, 6):
-                estilizar(ws.cell(ws.max_row, col), fill=fill)
+            ws.write(linha, 0, f"N{info['ipos']}", fill)
+            ws.write(linha, 1, info["nfer"],              fill)
+            ws.write(linha, 2, int(round(espacamento)),   fill)
+            ws.write(linha, 3, int(round(comp_faixa_total)), fill)
+            ws.write(linha, 4, tipo,                      fill)
+            linha += 1
 
         soma_geral += comp_faixa_total
         if ferro["eh_borda"]:
@@ -239,80 +245,82 @@ def gerar_relatorio(ferros, arquivo_excel):
         else:
             soma_simp += comp_faixa_total
 
-    ws.append(["", "", "", "", ""])
+    linha += 1  # linha em branco antes dos totais
     totais = [
-        ("Total Geral (cm)", soma_geral, verde),
-        ("Total Alternados (cm)", soma_alt, amarelo),
-        ("Total Simples (cm)", soma_simp, azul_claro),
-        ("Total Borda (cm)", soma_borda, vermelho),
+        ("Total Geral (cm)",     soma_geral, f_verde,    f_verde_lbl),
+        ("Total Alternados (cm)", soma_alt,  f_amarelo,  f_amarelo_lbl),
+        ("Total Simples (cm)",   soma_simp,  f_azul,     f_azul_lbl),
+        ("Total Borda (cm)",     soma_borda, f_vermelho, f_vermelho_lbl),
     ]
-    for label, valor, fill in totais:
-        ws.append([label, "", "", int(round(valor)), ""])
-        r = ws.max_row
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
-        for col in range(1, 6):
-            estilizar(ws.cell(r, col), fill=fill, bold=True)
+    for label, valor, fill_val, fill_lbl in totais:
+        ws.merge_range(linha, 0, linha, 2, label, fill_lbl)
+        ws.write(linha, 3, int(round(valor)), fill_val)
+        ws.write(linha, 4, "",                fill_val)
+        linha += 1
 
-    # Bloco auxiliar à direita da tabela: imagens e resultados DETS/DETAL.
-    primeira_coluna_imagem = 9  # duas colunas de espaçamento após a tabela (A:E)
-    coluna_imagem = get_column_letter(primeira_coluna_imagem)
-    primeira_linha_imagem = 12
-    base_dir = os.path.dirname(__file__)
-    candidatos_imgs = [
-        os.path.join(base_dir, "imgs"),
-    ]
-    imagens_dir = next((p for p in candidatos_imgs if os.path.isdir(p)), candidatos_imgs[-1])
-    caminho_det_s = os.path.join(imagens_dir, "detS.png")
+    # --- Larguras de colunas ---
+    ws.set_column(0, 0, 14)
+    ws.set_column(1, 1, 13)
+    ws.set_column(2, 2, 18)
+    ws.set_column(3, 3, 20)
+    ws.set_column(4, 4, 14)
+
+    # --- Bloco auxiliar: imagens detS / detAL ---
+    primeira_coluna_imagem = 8  # coluna I (0-indexed)
+    primeira_linha_imagem  = 11
+
+    base_dir   = os.path.dirname(__file__)
+    imagens_dir = os.path.join(base_dir, "imgs")
+    caminho_det_s  = os.path.join(imagens_dir, "detS.png")
     caminho_det_al = os.path.join(imagens_dir, "detAL.png")
 
-    valor_det_s = soma_simp + (soma_borda / 2.0)
+    valor_det_s  = soma_simp + (soma_borda / 2.0)
     valor_det_al = soma_alt
 
+    f_cinza_bold = fmt("#D9D9D9", bold=True)
+    f_bold_plain = wb.add_format({"bold": True, "align": "center", "valign": "vcenter", "border": 1})
+
+    ALTURA_LINHA_PX = 20
+    ESCALA_IMG      = 0.5
+
     if os.path.exists(caminho_det_s):
-        img_det_s = Image(caminho_det_s)
-        img_det_s.width *= 0.5
-        img_det_s.height *= 0.5
-        ws.add_image(img_det_s, f"{coluna_imagem}{primeira_linha_imagem}")
-        linhas_ocupadas_det_s = max(12, int(img_det_s.height / 20))
+        ws.insert_image(primeira_linha_imagem, primeira_coluna_imagem, caminho_det_s,
+                        {"x_scale": ESCALA_IMG, "y_scale": ESCALA_IMG})
+        from PIL import Image as PILImage
+        with PILImage.open(caminho_det_s) as im:
+            _, h_px = im.size
+        linhas_ocupadas = max(12, int(h_px * ESCALA_IMG / ALTURA_LINHA_PX))
     else:
-        linhas_ocupadas_det_s = 14
-        ws.cell(row=primeira_linha_imagem, column=primeira_coluna_imagem, value="Imagem detS não encontrada")
+        ws.write(primeira_linha_imagem, primeira_coluna_imagem, "Imagem detS nao encontrada")
+        linhas_ocupadas = 14
 
-    linha_valor_det_s = primeira_linha_imagem + linhas_ocupadas_det_s - 3
-    ws.cell(row=linha_valor_det_s, column=primeira_coluna_imagem, value="Total Simples + Borda")
-    ws.cell(row=linha_valor_det_s + 1, column=primeira_coluna_imagem, value=int(round(valor_det_s)))
+    linha_val_s = primeira_linha_imagem + linhas_ocupadas - 3
+    ws.write(linha_val_s,     primeira_coluna_imagem, "Total Simples + Borda", f_cinza_bold)
+    ws.write(linha_val_s + 1, primeira_coluna_imagem, int(round(valor_det_s)), f_bold_plain)
 
-    segunda_linha_imagem = linha_valor_det_s + 4
+    segunda_linha_imagem = linha_val_s + 4
     if os.path.exists(caminho_det_al):
-        img_det_al = Image(caminho_det_al)
-        img_det_al.width *= 0.5
-        img_det_al.height *= 0.5
-        ws.add_image(img_det_al, f"{coluna_imagem}{segunda_linha_imagem}")
-        linhas_ocupadas_det_al = max(12, int(img_det_al.height / 20))
+        ws.insert_image(segunda_linha_imagem, primeira_coluna_imagem, caminho_det_al,
+                        {"x_scale": ESCALA_IMG, "y_scale": ESCALA_IMG})
+        from PIL import Image as PILImage
+        with PILImage.open(caminho_det_al) as im:
+            _, h_px = im.size
+        linhas_ocupadas_al = max(12, int(h_px * ESCALA_IMG / ALTURA_LINHA_PX))
     else:
-        linhas_ocupadas_det_al = 14
-        ws.cell(row=segunda_linha_imagem, column=primeira_coluna_imagem, value="Imagem detAL não encontrada")
+        ws.write(segunda_linha_imagem, primeira_coluna_imagem, "Imagem detAL nao encontrada")
+        linhas_ocupadas_al = 14
 
-    linha_valor_det_al = segunda_linha_imagem + linhas_ocupadas_det_al - 2
-    ws.cell(row=linha_valor_det_al, column=primeira_coluna_imagem, value="Total Alternados")
-    ws.cell(row=linha_valor_det_al + 1, column=primeira_coluna_imagem, value=int(round(valor_det_al)))
+    linha_val_al = segunda_linha_imagem + linhas_ocupadas_al - 2
+    ws.write(linha_val_al,     primeira_coluna_imagem, "Total Alternados", f_cinza_bold)
+    ws.write(linha_val_al + 1, primeira_coluna_imagem, int(round(valor_det_al)), f_bold_plain)
 
-    for linha in (linha_valor_det_s, linha_valor_det_s + 1, linha_valor_det_al, linha_valor_det_al + 1):
-        estilizar(ws.cell(linha, primeira_coluna_imagem), fill=cinza if linha in (linha_valor_det_s, linha_valor_det_al) else None, bold=True)
+    # Largura da coluna de imagem
+    ws.set_column(primeira_coluna_imagem, primeira_coluna_imagem, 28)
 
-    larguras = [14, 13, 18, 20, 14]
-    for i, w in enumerate(larguras, start=1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-    largura_coluna_imagem = 24
-    if os.path.exists(caminho_det_al):
-        largura_coluna_imagem = img_det_al.width / 7
-    ws.column_dimensions[coluna_imagem].width = largura_coluna_imagem
-
-    os.makedirs(os.path.dirname(arquivo_excel), exist_ok=True)
     try:
-        wb.save(arquivo_excel)
+        wb.close()
         return arquivo_excel
-    except PermissionError:
+    except Exception:
         return None
 
 

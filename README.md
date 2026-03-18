@@ -1,6 +1,6 @@
 # tqs-automation
 
-Ferramenta de automação para extração e classificação de ferros de armadura em projetos estruturais no **TQS**. A partir de um desenho DWG aberto no editor do TQS, o script identifica automaticamente todos os ferros inteligentes (IPOFER), classifica cada um pela sua posição em relação à borda da viga e gera uma planilha Excel formatada com o relatório completo.
+Ferramenta de automação para extração e classificação de ferros de armadura em projetos estruturais no **TQS**. A partir de um desenho DWG aberto no editor, o script identifica automaticamente todos os ferros inteligentes (`IPOFER`), classifica cada um pela posição em relação à borda da viga e gera uma planilha Excel formatada com o relatório completo.
 
 ---
 
@@ -11,8 +11,6 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 - [Dependências](#dependências)
 - [Instalação](#instalação)
 - [Como usar](#como-usar)
-  - [Via botão no TQS (EAG)](#via-botão-no-tqs-eag)
-  - [Modo standalone (linha de comando)](#modo-standalone-linha-de-comando)
 - [Como funciona](#como-funciona)
 - [Saída — Planilha Excel](#saída--planilha-excel)
 - [Configurações](#configurações)
@@ -22,39 +20,36 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 ## Funcionalidades
 
-- **Integração com o TQS** — Acessível diretamente pelo menu do editor via botão EAG.
-- **Leitura de DWG** — Lê linhas, polilinhas e objetos inteligentes (IPOFER) do desenho.
+- **Integração nativa com o TQS** — acessível diretamente pelo menu do editor via botão EAG.
+- **Leitura de DWG** — lê linhas, polilinhas e objetos inteligentes (`IPOFER`) do desenho.
 - **Classificação geométrica de ferros** em três categorias:
-  - 🔴 **BORDA** — Ferros próximos ao perímetro da viga (dentro do cobrimento).
-  - 🟡 **ALTERNADO** — Ferros distribuídos com fator de alternância.
-  - 🔵 **INTERNO** — Ferros internos simples.
-- **Cálculo de espaçamento** por faixa de distribuição.
-- **Relatório Excel** formatado e colorido com totais por categoria.
+  - 🔴 **BORDA** — ferros próximos ao perímetro da viga (dentro da tolerância configurável).
+  - 🟡 **ALTERNADO** — ferros com fator de alternância ativo.
+  - 🔵 **INTERNO** — ferros internos simples.
+- **Cálculo automático de comprimento de faixa** por posição.
+- **Relatório Excel colorido** com totais por categoria, compatível com Excel 2019 e superior.
 
 ---
 
 ## Pré-requisitos
 
-- TQS instalado e com suporte à execução de scripts Python
-- Python compatível com a interface do TQS
-- Acesso ao pacote TQSPython da instalação do TQS
+- TQS instalado com suporte à execução de scripts Python
+- Python 3.13 com `pip` e variável de ambiente configurados
+- Acesso ao pacote `TQSPythonInterface` da instalação do TQS
 
 ---
 
 ## Dependências
 
-| Biblioteca / pacote | Versão | Obrigatória | Finalidade |
+| Pacote | Versão mínima | Obrigatório | Finalidade |
 |---|---|---|---|
-| **Python** | `3.13.12` | Sim | Ambiente Python identificado neste workspace |
-| **TQSPythonInterface** | `2.1.7` | Sim | Disponibiliza o módulo `TQS` e os submódulos `TQSDwg`, `TQSGeo`, `TQSEag` e `TQSJan` |
-| **openpyxl** | `>= 3.1.0` | Sim | Geração e formatação da planilha Excel |
-| **Pillow** | `>= 10.0.0` | Sim | Suporte a imagens PNG inseridas na planilha via `openpyxl.drawing.image.Image` |
+| **Python** | `3.13` | Sim | Ambiente de execução |
+| **TQSPythonInterface** | `2.1.7` | Sim | Módulos `TQSDwg`, `TQSGeo`, `TQSEag`, `TQSJan` |
+| **xlsxwriter** | `>= 3.0.0` | Sim | Geração da planilha Excel com total compatibilidade com Excel 2019+ |
+| **Pillow** | `>= 10.0.0` | Não | Necessário apenas se as imagens `detS.png` / `detAL.png` forem utilizadas |
 
-Bibliotecas importadas diretamente pelo script `extracao_tabela_ferro.py`:
-
-- **Bibliotecas padrão do Python**: `math`, `os`
-- **Bibliotecas do TQS / TQSPython**: `TQS.TQSDwg`, `TQS.TQSGeo`, `TQS.TQSEag`, `TQS.TQSJan`
-- **Bibliotecas externas**: `openpyxl`, `Pillow`
+> **Por que `xlsxwriter` e não `openpyxl`?**
+> O Excel 2019 exige o atributo `applyFill="1"` no XML interno do arquivo `.xlsx` para renderizar cores em células. O `openpyxl` não gera esse atributo, fazendo com que toda formatação de cor seja silenciosamente ignorada em versões antigas do Excel. O `xlsxwriter` segue o padrão OOXML corretamente e funciona em todas as versões.
 
 ---
 
@@ -62,16 +57,19 @@ Bibliotecas importadas diretamente pelo script `extracao_tabela_ferro.py`:
 
 1. **Clone ou baixe** este repositório.
 
-3. Instale as dependências Python necessárias:
-  3.1. `https://www.python.org/downloads/release/python-31312/` | Adicionar PIP e variavel de ambiente
-  3.2
-    ```bash
-    pip install openpyxl
-    pip install pillow
-    pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
-    ```
+2. Instale o Python 3.13 com `pip` e variável de ambiente:
+   - Download: https://www.python.org/downloads/release/python-31312/
+   - Durante a instalação, marque **"Add Python to PATH"** e **"Install pip"**.
 
-3. Copie a pasta `\scripts` e o arquivo `EAG.PYMEN` para a pasta `C:\TQSW\EXEC\Python` do seu projeto TQS.
+3. Instale as dependências Python:
+
+   ```bash
+   pip install xlsxwriter
+   pip install pillow                                                     
+   pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
+   ```
+
+4. Copie todo o conteúdo de `\arquivos` e a pasta `imgs` para `C:\TQSW\EXEC\Python` do seu projeto TQS.
 
 ---
 
@@ -79,31 +77,28 @@ Bibliotecas importadas diretamente pelo script `extracao_tabela_ferro.py`:
 
 ### Via botão no TQS (EAG)
 
-1. Abra o desenho DWG desejado no editor do TQS.
+1. Abra o desenho DWG no editor do TQS.
 2. No menu **Relatório Ferros**, clique em **Extrair Ferros e Gerar Relatório**.
-3. Aguarde a conclusão — as mensagens de progresso aparecerão no painel de saída do TQS.
-4. O arquivo Excel será salvo automaticamente em:
+3. Acompanhe as mensagens de progresso no painel de saída do TQS.
+4. O arquivo Excel é salvo automaticamente na mesma pasta do DWG:
 
    ```
-  <pasta do DWG>/Ferro Corrido - <nome do desenho>.xlsx
+   <pasta do DWG>\Ferro Corrido - <nome do desenho>.xlsx
    ```
 
-### Modo standalone (linha de comando)
+> **Atenção:** se o arquivo Excel já estiver aberto, o TQS exibirá uma mensagem de erro pedindo que você o feche antes de tentar novamente.
 
-Para rodar fora do TQS (desde que os módulos TQS estejam disponíveis no ambiente):
+### Via linha de comando (standalone)
 
-1. Garanta que o ambiente Python tenha acesso ao módulo `TQS` fornecido pelo TQSPython.
-2. Execute:
+Para executar fora do TQS (desde que os módulos `TQS` estejam disponíveis no ambiente Python):
 
-   ```bash
-  python extracao_tabela_ferro.py
-   ```
+```bash
+python extracao_tabela_ferro.py
+```
 
 ---
 
 ## Como funciona
-
-O script é dividido em **5 fases** sequenciais:
 
 ```
 Fase 1 ──► Fase 2 ──► Fase 3 ──► Fase 4 ──► Fase 5
@@ -113,44 +108,48 @@ Inicializa  Contorno   Extrai     Classifica  Gera
 
 | Fase | Nome | Descrição |
 |------|------|-----------|
-| **1** | Inicialização | Abre o arquivo DWG e configura a tolerância geométrica (padrão: 0,5 cm). |
-| **2** | Contorno da Viga | Extrai todos os segmentos de linha e polilinha dos níveis `228` (viga) e `227` (pilar) para delimitar a seção analisada. |
-| **3** | Extração dos Ferros | Lê todos os objetos `IPOFER` (ferros inteligentes) do desenho, extraindo posição, bitola, quantidade, comprimento, cobrimento e faixas de distribuição. |
-| **4** | Classificação Geométrica | Calcula a distância de cada ponto de inserção do ferro aos segmentos de contorno. Ferros dentro do cobrimento + tolerância são marcados como **BORDA**; os demais são separados em **ALTERNADO** ou **INTERNO**. |
-| **5** | Geração do Relatório | Cria uma planilha Excel organizada por posição, com cabeçalhos, linhas coloridas por tipo e linhas de totalização. |
+| **1** | Inicialização | Conecta ao DWG aberto no TQS e resolve o caminho de saída da planilha. |
+| **2** | Contorno da viga | Extrai segmentos de linha e polilinha dos níveis `228` (viga) e `227` (pilar) para delimitar o perímetro analisado. |
+| **3** | Extração dos ferros | Lê todos os objetos `IPOFER` do desenho, coletando posição, bitola, quantidade, comprimento e faixas de distribuição. |
+| **4** | Classificação geométrica | Calcula a distância de cada ponto de inserção do ferro aos segmentos do contorno. Ferros dentro da `TOLERANCIA` são marcados como **BORDA**; os demais são separados em **ALTERNADO** ou **INTERNO** conforme o `alternatingMode`. |
+| **5** | Geração do relatório | Cria a planilha Excel com linhas coloridas por tipo, linhas em branco entre posições distintas, totais por categoria e bloco auxiliar de imagens (opcional). |
 
 ---
 
 ## Saída — Planilha Excel
 
-O arquivo gerado (`relatorio_ferros.xlsx`) contém uma aba **"Ferros"** com as colunas:
+O arquivo gerado contém uma aba **"Ferros"** com as seguintes colunas:
 
 | Coluna | Descrição |
 |---|---|
-| Posição | Identificador do ferro (ex.: `N1`, `N2`, ...) |
-| Quantidade | Número de ferros da posição |
-| Espaçamento (cm) | Espaçamento calculado entre ferros na faixa |
-| Compr. Faixa (cm) | Comprimento total da faixa de distribuição |
-| Tipo | `BORDA`, `ALT(1/N)` ou `INTERNO` |
+| **Posição** | Identificador do ferro (ex.: `N1`, `N2`, …) |
+| **Quantidade** | Número de ferros da faixa |
+| **Espaçamento (cm)** | Espaçamento entre ferros na faixa |
+| **Compr. Faixa (cm)** | Comprimento total da faixa (`Quantidade × Espaçamento`) |
+| **Tipo** | `BORDA`, `ALTERNADO` ou `INTERNO` |
 
-Ao final da planilha, são exibidos os totais de comprimento por categoria:
+Ao final da tabela são exibidos os totais:
 
-- 🟢 **Total Geral**
-- 🟡 **Total Alternados**
-- 🔵 **Total Simples**
-- 🔴 **Total Borda**
+| Linha | Cor | Valor |
+|---|---|---|
+| Total Geral | 🟢 Verde | Soma de todas as faixas |
+| Total Alternados | 🟡 Amarelo | Soma das faixas `ALTERNADO` |
+| Total Simples | 🔵 Azul | Soma das faixas `INTERNO` |
+| Total Borda | 🔴 Vermelho | Soma das faixas `BORDA` |
+
+Se as imagens `imgs\detS.png` e `imgs\detAL.png` existirem na mesma pasta do script, elas são inseridas à direita da tabela com os valores calculados de **Total Simples + Borda/2** e **Total Alternados**.
 
 ---
 
 ## Configurações
 
-As principais constantes estão no início de `extracao_tabela_ferro.py`:
+As constantes de configuração ficam no início de `extracao_tabela_ferro.py`:
 
 | Constante | Padrão | Descrição |
 |---|---|---|
-| `TOLERANCIA` | `0.5` | Tolerância geométrica em cm para comparação de cobrimento |
-| `NIVEL_VIGA` | `228` | Nível DWG considerado como contorno da viga |
-| `NIVEL_PILAR` | `227` | Nível DWG adicional considerado no mapeamento do contorno |
+| `TOLERANCIA` | `10` | Distância máxima (em unidades do DWG) para considerar um ferro como BORDA |
+| `NIVEL_VIGA` | `228` | Nível DWG dos segmentos de contorno da viga |
+| `NIVEL_PILAR` | `227` | Nível DWG adicional incluído no mapeamento do contorno |
 
 ---
 
