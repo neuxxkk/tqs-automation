@@ -1,12 +1,13 @@
 import math
 import os
+from datetime import datetime
 from TQS import TQSDwg, TQSGeo, TQSEag, TQSJan
 from openpyxl.drawing.image import Image
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-TOLERANCIA = 0.5
+TOLERANCIA = 10
 NIVEL_VIGA = 228
 NIVEL_PILAR = 227
 
@@ -123,7 +124,6 @@ def extrair_ferros(dwg, eag=None):
             {
                 "tipo": ferro_tipo,
                 "bitola_mm": rebar.diameter,
-                "cobrimento": rebar.cover,
                 "info_descr": info_descr,
                 "pontos": pontos_insercao,
                 "espacamento": rebar.spacing,
@@ -149,8 +149,8 @@ def distancia_ponto_segmento(xp, yp, x1, y1, x2, y2):
     return math.sqrt((xp - px) ** 2 + (yp - py) ** 2)
 
 
-def ponto_na_borda(xp, yp, segmentos, cobrimento):
-    limite_superior = cobrimento + TOLERANCIA
+def ponto_na_borda(xp, yp, segmentos):
+    limite_superior = TOLERANCIA
 
     for x1l, y1l, x2l, y2l in segmentos:
         if distancia_ponto_segmento(xp, yp, x1l, y1l, x2l, y2l) <= limite_superior:
@@ -161,9 +161,8 @@ def ponto_na_borda(xp, yp, segmentos, cobrimento):
 
 def classificar_ferros(ferros, segmentos):
     for ferro in ferros:
-        cobrimento = ferro["cobrimento"]
         ferro["eh_borda"] = any(
-            ponto_na_borda(xp, yp, segmentos, cobrimento) for xp, yp in ferro["pontos"]
+            ponto_na_borda(xp, yp, segmentos) for xp, yp in ferro["pontos"]
         )
 
 
@@ -227,7 +226,7 @@ def gerar_relatorio(ferros, arquivo_excel):
         pos_anterior = ipos
 
         for info in ferro["info_descr"]:
-            ws.append([f"N{info['ipos']}", info["nfer"], round(espacamento, 2), round(comp_faixa_total, 2), tipo])
+            ws.append([f"N{info['ipos']}", info["nfer"], int(round(espacamento)), int(round(comp_faixa_total)), tipo])
             fill = cores_tipo["BORDA" if ferro["eh_borda"] else ("ALTERNADO" if ferro["alternado"] else "INTERNO")]
             for col in range(1, 6):
                 estilizar(ws.cell(ws.max_row, col), fill=fill)
@@ -248,7 +247,7 @@ def gerar_relatorio(ferros, arquivo_excel):
         ("Total Borda (cm)", soma_borda, vermelho),
     ]
     for label, valor, fill in totais:
-        ws.append([label, "", "", round(valor, 2), ""])
+        ws.append([label, "", "", int(round(valor)), ""])
         r = ws.max_row
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
         for col in range(1, 6):
@@ -281,7 +280,7 @@ def gerar_relatorio(ferros, arquivo_excel):
 
     linha_valor_det_s = primeira_linha_imagem + linhas_ocupadas_det_s - 3
     ws.cell(row=linha_valor_det_s, column=primeira_coluna_imagem, value="Total Simples + Borda")
-    ws.cell(row=linha_valor_det_s + 1, column=primeira_coluna_imagem, value=round(valor_det_s, 2))
+    ws.cell(row=linha_valor_det_s + 1, column=primeira_coluna_imagem, value=int(round(valor_det_s)))
 
     segunda_linha_imagem = linha_valor_det_s + 4
     if os.path.exists(caminho_det_al):
@@ -296,7 +295,7 @@ def gerar_relatorio(ferros, arquivo_excel):
 
     linha_valor_det_al = segunda_linha_imagem + linhas_ocupadas_det_al - 2
     ws.cell(row=linha_valor_det_al, column=primeira_coluna_imagem, value="Total Alternados")
-    ws.cell(row=linha_valor_det_al + 1, column=primeira_coluna_imagem, value=round(valor_det_al, 2))
+    ws.cell(row=linha_valor_det_al + 1, column=primeira_coluna_imagem, value=int(round(valor_det_al)))
 
     for linha in (linha_valor_det_s, linha_valor_det_s + 1, linha_valor_det_al, linha_valor_det_al + 1):
         estilizar(ws.cell(linha, primeira_coluna_imagem), fill=cinza if linha in (linha_valor_det_s, linha_valor_det_al) else None, bold=True)
@@ -304,10 +303,17 @@ def gerar_relatorio(ferros, arquivo_excel):
     larguras = [14, 13, 18, 20, 14]
     for i, w in enumerate(larguras, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
-    ws.column_dimensions[coluna_imagem].width = img_det_al.width/7
+    largura_coluna_imagem = 24
+    if os.path.exists(caminho_det_al):
+        largura_coluna_imagem = img_det_al.width / 7
+    ws.column_dimensions[coluna_imagem].width = largura_coluna_imagem
 
     os.makedirs(os.path.dirname(arquivo_excel), exist_ok=True)
-    wb.save(arquivo_excel)
+    try:
+        wb.save(arquivo_excel)
+        return arquivo_excel
+    except PermissionError:
+        return None
 
 
 def rodar_script(eag=None, tqsjan=None):
@@ -333,8 +339,14 @@ def rodar_script(eag=None, tqsjan=None):
         return
 
     classificar_ferros(ferros, segmentos)
-    gerar_relatorio(ferros, arquivo_excel)
-    eag.msg.Print(f"Relatorio gerado com sucesso: {arquivo_excel}")
+    arquivo_salvo = gerar_relatorio(ferros, arquivo_excel)
+
+    if arquivo_salvo == arquivo_excel:
+        eag.msg.Print(f"Relatorio gerado com sucesso: {arquivo_salvo}")
+    else:
+        eag.msg.Print(
+            f"ERRO: Tabela está aberta no Excel. Feche o arquivo '{arquivo_excel}' e tente novamente."
+        )
 
 
 if __name__ == "__main__":
