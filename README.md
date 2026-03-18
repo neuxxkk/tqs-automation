@@ -41,7 +41,7 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 ## Dependências
 
-| Pacote | Versão mínima | Obrigatório | Finalidade |
+| Pacote | Versão necessária | Obrigatório | Finalidade |
 |---|---|---|---|
 | **Python** | `3.13` | Sim | Ambiente de execução |
 | **TQSPythonInterface** | `2.1.7` | Sim | Módulos `TQSDwg`, `TQSGeo`, `TQSEag`, `TQSJan` |
