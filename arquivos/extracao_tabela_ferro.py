@@ -173,11 +173,11 @@ def gerar_relatorio(ferros, arquivo_excel):
     ws = wb.active
     ws.title = "Ferros"
 
-    cinza = PatternFill("solid", fgColor="D9D9D9")
-    azul_claro = PatternFill("solid", fgColor="BDD7EE")
-    verde = PatternFill("solid", fgColor="C6EFCE")
-    amarelo = PatternFill("solid", fgColor="FFEB9C")
-    vermelho = PatternFill("solid", fgColor="FF9999")
+    cinza = PatternFill(patternType="solid", fgColor="FFD9D9D9", bgColor="FFFFFFFF")
+    azul_claro = PatternFill(patternType="solid", fgColor="FFBDD7EE", bgColor="FFFFFFFF")
+    verde = PatternFill(patternType="solid", fgColor="FFC6EFCE", bgColor="FFFFFFFF")
+    amarelo = PatternFill(patternType="solid", fgColor="FFFFEB9C", bgColor="FFFFFFFF")
+    vermelho = PatternFill(patternType="solid", fgColor="FFFF9999", bgColor="FFFFFFFF")
     centro = Alignment(horizontal="center", vertical="center")
     borda_fina = Border(
         left=Side(style="thin"),
