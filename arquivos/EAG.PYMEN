@@ -5,7 +5,7 @@ gerar_porco.py
 [CMD]
 ID_EXTRACAO_FERROS,extracao_tabela_ferro.py,rodar_script
 Extraindo tabela de ferros e gerando relatorio
-ID_GERAR_PORCO,gerar_porco.py,rodar_script
+ID_GERAR_PORCO,gerar_porco.py,aplic_desenhar
 Gerar detalhe de amarracao dos negativos
 
 [MENU]
