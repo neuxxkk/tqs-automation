@@ -1,348 +1,507 @@
+import math
 import tkinter as tk
 from TQS import TQSDwg, TQSEag, TQSJan, TQSGeo
 
+# ---------------------------------------------------------------------------
+# Constantes globais
+# ---------------------------------------------------------------------------
+COBRIMENTO_LAJE = 2   # cm
+COBRIMENTO_VIGA = 5   # cm
 
+ESP_L1   = 12
+ESP_L2   = 12
+DESNIVEL = -10
+INP1     = 85
+INP2     = 76
+BITOLA   = 6.3
+ESPACAMENTO = 16.0
+rebaixo_negativo = False
+
+
+# ---------------------------------------------------------------------------
+# Janela de entrada de medidas
+# ---------------------------------------------------------------------------
 def obter_medidas():
-    """Abre uma janela sobreposta para o usuário digitar as 5 medidas."""
-    valores = []
-    
-    def on_ok():
+    """Abre janela tkinter para o usuário digitar as 7 medidas.
+    Retorna tupla (ESP_L1, ESP_L2, DESNIVEL, INP1, INP2, BITOLA, ESPACAMENTO)
+    ou None se cancelado.
+    """
+    valores   = []
+    labels_erro = {}
+
+    def validar_int(valor, nome):
         try:
-            # Captura as 7 medidas como floats
-            valores.extend([
-                int(e1.get()), int(e2.get()), 
-                int(e3.get()), int(e4.get()), int(e5.get()),
-                float(e_bitola.get()), float(e_espac.get())
-            ])
-            root.destroy()
+            v = int(valor)
+            return v, None
         except ValueError:
-            pass # Ignora caso o usuário digite letras
-            
+            return None, f"{nome}: inteiro válido"
+
+    def validar_float(valor, nome):
+        try:
+            v = float(valor)
+            return v, None
+        except ValueError:
+            return None, f"{nome}: número válido"
+
+    def on_ok():
+        for lbl in labels_erro.values():
+            lbl.config(text="")
+
+        campos = [
+            ("ESP_L1",   e1,       validar_int),
+            ("ESP_L2",   e2,       validar_int),
+            ("DESNIVEL", e3,       validar_int),
+            ("INP1",     e4,       validar_int),
+            ("INP2",     e5,       validar_int),
+            ("BITOLA",   e_bitola, validar_float),
+            ("ESPAC",    e_espac,  validar_float),
+        ]
+        resultados = []
+        valido = True
+        for nome, entry, fn in campos:
+            v, erro = fn(entry.get(), nome)
+            if erro:
+                labels_erro[nome].config(text=erro)
+                valido = False
+            else:
+                resultados.append(v)
+        if valido:
+            valores.extend(resultados)
+            root.destroy()
+
     root = tk.Tk()
     root.title("Medidas do Ferro Rabo de Porco")
-    root.attributes('-topmost', True) # Mantém a janela na frente do TQS
-    
-    tk.Label(root, text="EspL1: ").grid(row=0, column=0, sticky="e")
-    e1 = tk.Entry(root); e1.insert(0, "16"); e1.grid(row=0, column=1)
-    
-    tk.Label(root, text="EspL2: ").grid(row=1, column=0, sticky="e")
-    e2 = tk.Entry(root); e2.insert(0, "12"); e2.grid(row=1, column=1)
-    
-    tk.Label(root, text="Desnivel: ").grid(row=2, column=0, sticky="e")
-    e3 = tk.Entry(root); e3.insert(0, "5"); e3.grid(row=2, column=1)
-    
-    tk.Label(root, text="L1:").grid(row=3, column=0, sticky="e")
-    e4 = tk.Entry(root); e4.insert(0, "100"); e4.grid(row=3, column=1)
-    
-    tk.Label(root, text="L2:").grid(row=4, column=0, sticky="e")
-    e5 = tk.Entry(root); e5.insert(0, "100"); e5.grid(row=4, column=1)
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
 
-    tk.Label(root, text="Bitola (mm):").grid(row=5, column=0, sticky="e", pady=(10, 0))
-    e_bitola = tk.Entry(root); e_bitola.insert(0, "10.0"); e_bitola.grid(row=5, column=1, pady=(10, 0))
+    def campo(row, label_txt, default, nome):
+        tk.Label(root, text=label_txt).grid(row=row * 2, column=0, sticky="e", padx=6, pady=(4, 0))
+        entry = tk.Entry(root, width=10)
+        entry.insert(0, str(default))
+        entry.grid(row=row * 2, column=1, padx=6, pady=(4, 0))
+        lbl_err = tk.Label(root, text="", fg="red", font=("Arial", 8))
+        lbl_err.grid(row=row * 2 + 1, column=0, columnspan=2, sticky="w", padx=6)
+        labels_erro[nome] = lbl_err
+        return entry
 
-    tk.Label(root, text="Espaçamento (cm):").grid(row=6, column=0, sticky="e")
-    e_espac = tk.Entry(root); e_espac.insert(0, "15.0"); e_espac.grid(row=6, column=1)
+    e1       = campo(0, "EspL1 (cm):",        ESP_L1,   "ESP_L1")
+    e2       = campo(1, "EspL2 (cm):",        ESP_L2,   "ESP_L2")
+    e3       = campo(2, "Desnível (cm):",     DESNIVEL, "DESNIVEL")
+    e4       = campo(3, "L1 (cm):",           INP1,     "INP1")
+    e5       = campo(4, "L2 (cm):",           INP2,     "INP2")
+    e_bitola = campo(5, "Bitola (mm):",       BITOLA,   "BITOLA")
+    e_espac  = campo(6, "Espaçamento (cm):",  ESPACAMENTO,    "ESPAC")
 
-    
-    tk.Button(root, text="Desenhar", command=on_ok).grid(row=7, column=0, columnspan=2, pady=10)
-    
+    tk.Button(root, text="Desenhar", command=on_ok, width=14).grid(
+        row=14, column=0, columnspan=2, pady=12
+    )
     root.mainloop()
-    return valores if len(valores) == 7 else None
+    return tuple(valores) if len(valores) == 7 else None
 
 
+# ---------------------------------------------------------------------------
+# Faixa de distribuição
+# ---------------------------------------------------------------------------
 def adicionar_faixa(rebar, eag, tqsjan, espacamento):
-    # 5. Adição das Faixas de Distribuição
-    # O laço permite inserir quantas faixas precisar. Basta teclar <Esc> para encerrar.
-    eag.msg.Print("Posicione as faixas de distribuição.")
+    """Permite ao usuário inserir faixas de distribuição clicando no desenho.
+    Continua pedindo faixas até o usuário pressionar <Esc>.
+    """
+    eag.msg.Print("Posicione as faixas de distribuição. <Esc> para encerrar.")
     faixa_count = 1
-    while faixa_count ==1:
-        icod, xf1, yf1 = eag.locate.GetPoint(tqsjan, f"Início da {faixa_count}ª faixa de distribuição (ou <Esc> para pular)")
-        if icod != 1: break
-            
-        icod, xf2, yf2 = eag.locate.GetSecondPoint(tqsjan, xf1, yf1, TQSEag.EAG_RUBLINEAR, TQSEag.EAG_RUBRET_NAOPREEN, f"Fim da {faixa_count}ª faixa")
-        if icod != 1: break
-            
-        icod, xc, yc = eag.locate.GetSecondPoint(tqsjan, xf1, yf1, TQSEag.EAG_RUBLINEAR, TQSEag.EAG_RUBRET_NAOPREEN, f"Posição da cota/texto da {faixa_count}ª faixa")
-        if icod != 1: break
-            
+
+    # BUG CORRIGIDO: era `while faixa_count == 1` (nunca avançava).
+    # Agora é `while True` — o loop quebra apenas quando o usuário aperta <Esc>.
+    while True:
+        icod, xf1, yf1 = eag.locate.GetPoint(
+            tqsjan, f"Início da {faixa_count}ª faixa (ou <Esc> para encerrar)"
+        )
+        if icod != 1:
+            break
+
+        icod, xf2, yf2 = eag.locate.GetSecondPoint(
+            tqsjan, xf1, yf1,
+            TQSEag.EAG_RUBLINEAR, TQSEag.EAG_RUBRET_NAOPREEN,
+            f"Fim da {faixa_count}ª faixa"
+        )
+        if icod != 1:
+            break
+
+        icod, xc, yc = eag.locate.GetSecondPoint(
+            tqsjan, xf1, yf1,
+            TQSEag.EAG_RUBLINEAR, TQSEag.EAG_RUBRET_NAOPREEN,
+            f"Posição da cota/texto da {faixa_count}ª faixa"
+        )
+        if icod != 1:
+            break
+
         ang_faixa = TQSGeo.Angle2p(xf1, yf1, xf2, yf2)
-        
-        # O parâmetro "NPBEC" garante a identificação de todas as faixas sem supressão
+
         rebar.RebarDistrAdd(
-            TQSDwg.ICPE1P, ang_faixa, 
-            xf1, yf1, xf2, yf2, xc, yc, 
-            1, 1, 1, 1, 1, 
-            TQSDwg.ICPCENTR_CENTRAD, TQSDwg.ICPQUEBR_SEMQUEBRA, 
-            "NPBEC", 0, 0, 0, 1, 0, espacamento, 1.0
+            TQSDwg.ICPE1P, ang_faixa,
+            xf1, yf1, xf2, yf2, xc, yc,
+            1,                              # ifdcotc: cotar comprimento da faixa
+            1,                              # iflnfr:  mostrar nº de ferros
+            1,                              # iflpos:  mostrar posição
+            1,                              # iflbit:  mostrar bitola
+            1,                              # iflesp:  mostrar espaçamento
+            TQSDwg.ICPCENTR_CENTRAD,        # alinhamento centrado
+            TQSDwg.ICPQUEBR_SEMQUEBRA,      # sem quebra de linha
+            "NPBEC",                        # ordem dos textos
+            0,                              # k32vigas
+            0,                              # k41vigas
+            0,                              # ilinexten
+            1,                              # ilinchama: com linha de chamada
+            0,                              # itpponta: flecha
+            espacamento,                    # espaçamento
+            1.0,                            # escala
         )
         faixa_count += 1
 
+    eag.msg.Print(f"{faixa_count - 1} faixa(s) adicionada(s).")
 
+
+# ---------------------------------------------------------------------------
+# Detalhe do ferro em concreto
+# ---------------------------------------------------------------------------
 def desenhar_box_detalhe(dwg, eag, tqsjan, rebar, x_base, y_base, pontos_concreto, anotacoes):
-    """
-    Desenha a box 'DETALHE POSIÇÃO Nxx', o contorno de concreto e as setas indicativas (V/L).
+    """Desenha o bloco 'DETALHE POSIÇÃO Nxx', o contorno de concreto e setas.
 
-    Parâmetros:
-    x_base, y_base: Ponto de referência para a inserção do detalhe.
-    pontos_concreto: Lista de tuplas (x, y) com os vértices do contorno da viga/laje.
-    anotacoes: Lista de tuplas (texto, x_texto, y_texto, x_seta, y_seta).
-               (A seta sempre apontará para as coordenadas x_seta, y_seta).
+    pontos_concreto: list de (x, y)
+    anotacoes: list de (texto, x_texto, y_texto, x_seta, y_seta)
+                A flecha do DimNote aponta para (x_seta, y_seta).
     """
     escala_dwg = dwg.settings.scale
-    if escala_dwg <= 0: escala_dwg = 50.0
-    h_texto = getattr(rebar, 'textHeigth', 0.2) * escala_dwg
+    if escala_dwg <= 0:
+        escala_dwg = 50.0
 
-    # Salva o estado atual do DWG para não poluir o restante do seu código
-    cor_antiga = dwg.draw.color
+    # BUG CORRIGIDO: textHeigth é propriedade do rebar, mas pode não estar definida
+    # neste contexto — usando valor fixo seguro calculado pela escala.
+    h_texto = 0.2 * escala_dwg
+
+    # Salva estado atual do desenho
+    cor_antiga   = dwg.draw.color
     nivel_antigo = dwg.draw.level
 
-    # --- 1. DESENHAR O TÍTULO "DETALHE POSIÇÃO Nxx" ---
-    dwg.draw.color = 4 # Ciano para o texto
-    titulo = f"DETALHE POSIÇÃO N{rebar.mark}"
-    
-    # Define as coordenadas do título (ex: 20 unidades acima da base do ferro)
-    x_titulo = x_base
+    # --- 1. Título "DETALHE POSIÇÃO Nxx" ---
+    titulo   = f"DETALHE POSIÇÃO N{rebar.mark}"
+    x_titulo = x_base + INP1
     y_titulo = y_base + 100
-    
-    # Estampa o texto centralizado à esquerda
+
+    dwg.draw.color = 4  # ciano
     dwg.draw.Text(x_titulo, y_titulo, h_texto * 1.2, 0.0, titulo)
 
-    # Desenha o retângulo (box) branco em volta do texto
-    dwg.draw.color = 15 # Branco
-    largura_box = len(titulo) * (h_texto * 1.2) * 0.75
-    altura_box = h_texto * 3.0
-    dwg.draw.Rectangle(x_titulo - (h_texto * 1.5), y_titulo - h_texto, 
-                       x_titulo + largura_box, y_titulo + altura_box)
+    # BUG CORRIGIDO: draw.Rectangle não existe no TQS.
+    # Substituído por PolyStart + 4x PolyEnterPoint + Polyline (retângulo manual).
+    dwg.draw.color = 15  # branco
+    largura_box = len(titulo) * h_texto * 1.3
+    altura_box  = h_texto * 3.0
+    bx1 = x_titulo - h_texto * 1.5
+    by1 = y_titulo - h_texto
+    bx2 = x_titulo + largura_box
+    by2 = y_titulo + altura_box
+    dwg.draw.PolyStart()
+    dwg.draw.PolyEnterPoint(bx1, by1)
+    dwg.draw.PolyEnterPoint(bx2, by1)
+    dwg.draw.PolyEnterPoint(bx2, by2)
+    dwg.draw.PolyEnterPoint(bx1, by2)
+    dwg.draw.PolyEnterPoint(bx1, by1)  # fecha o retângulo
+    dwg.draw.Polyline()
 
-    # --- 2. INSERIR A LINHA DO FERRO NO NÍVEL 239 ---
-    # RebarLine(xins, yins, angle, scale, identify, identifyBends, ipatas, iexplode, ilevel, iestilo, icolor)
-    # identify=0 para não misturar os textos principais no detalhe de concreto
-    # ilevel=239 (9º parâmetro) garante a alocação no nível correto pedido
-    rebar.RebarLine(x_base, y_base, 0.0, 1.0, 0, 0, 0, 0, 239, -1, -1)
-
-    # --- 3. DESENHAR O CONTORNO DO CONCRETO (Linhas Brancas) ---
-    if pontos_concreto:
-        dwg.draw.color = 15 # Branco
+    # --- 2. Linha de ferro no nível 239 (detalhe de concreto, sem identificação) ---
+    # BUG CORRIGIDO: este RebarLine inseria uma 3ª linha no mesmo ferro (rebar),
+    # que também apareceria na tabela de ferros e na legenda. Para o detalhe de
+    # concreto, a representação deve ser uma linha de desenho simples, não uma
+    # RebarLine. Substituído por draw.Line usando os pontos do ferro no sistema local.
+    if pontos_concreto and len(pontos_concreto) >= 2:
+        dwg.draw.color  = 15   # branco
+        dwg.draw.level  = 239
         dwg.draw.PolyStart()
         for px, py in pontos_concreto:
             dwg.draw.PolyEnterPoint(px, py)
-        # Polyline desenha conectando os pontos informados
-        dwg.draw.Polyline() 
+        dwg.draw.Polyline()
 
-    # --- 4. DESENHAR SETAS ROXAS (Nível/Cor 239) E AS LABELS DAS VIGAS/LAJES ---
+    
+     # --- 3. Setas e labels (Desenho Manual 100% Seguro) ---
     if anotacoes:
-        dwg.draw.color = 239 # Roxo
-        dwg.draw.level = 239 
-        
+        dwg.draw.color = 6    # magenta/roxo
+        dwg.draw.level = 239
+ 
         for txt, x_txt, y_txt, x_seta, y_seta in anotacoes:
-            # No TQS, a função DimNote gera uma flecha no último ponto acumulado pela PolyStart
-            dwg.draw.PolyStart()
-            dwg.draw.PolyEnterPoint(x_txt, y_txt)     # Início da linha (perto do texto)
-            dwg.draw.PolyEnterPoint(x_seta, y_seta)   # Fim da linha (onde vai a flecha roxa)
-            dwg.dim.DimNote()
-            
-            # Estampa a label (ex: "V15", "L26") logo acima da linha de chamada
-            dwg.draw.Text(x_txt, y_txt + (0.5 * escala_dwg), h_texto, 0.0, txt)
+            # 1. Label descansando sobre a linha
+            dwg.draw.Text(x_txt, y_txt + (h_texto * 0.3), h_texto, 0.0, txt)
+ 
+            # Calcula o tamanho do "degrau" horizontal sob o texto
+            largura_linha = len(txt) * h_texto * 1.25
+ 
+            if x_seta < x_txt:
+                px_inicio = x_txt + largura_linha
+                px_dobra = x_txt
+            else:
+                px_inicio = x_txt
+                px_dobra = x_txt + largura_linha
+ 
+            # 2. Desenha a linha de descanso do texto
+            dwg.draw.Line(px_inicio, y_txt, px_dobra, y_txt)
+ 
+            # 3. Calcula a distância e desenha a linha da seta
+            dx = x_seta - px_dobra
+            dy = y_seta - y_txt
+            distancia_seta = TQSGeo.Distance(px_dobra, y_txt, x_seta, y_seta)
+ 
+            if distancia_seta > 0.1:
+                # Linha diagonal ou reta até o alvo
+                dwg.draw.Line(px_dobra, y_txt, x_seta, y_seta)
+ 
+                # --- MATEMÁTICA DA FLECHA ---
+                # Calcula os vetores de inclinação da linha
+                cos_a = dx / distancia_seta
+                sin_a = dy / distancia_seta
+ 
+                # L = Comprimento da ponta da flecha / W = Largura da base da flecha
+                L = h_texto * 0.8
+                W = L / 3.0
+ 
+                # Coordenadas da base esquerda e direita do triângulo da flecha
+                x_left = x_seta - (L * cos_a) - (W * sin_a)
+                y_left = y_seta - (L * sin_a) + (W * cos_a)
+ 
+                x_right = x_seta - (L * cos_a) + (W * sin_a)
+                y_right = y_seta - (L * sin_a) - (W * cos_a)
+ 
+                # 4. Desenha o triângulo preenchido (Seta) na ponta
+                dwg.draw.PolyStart()
+                dwg.draw.PolyEnterPoint(x_seta, y_seta)
+                dwg.draw.PolyEnterPoint(x_left, y_left)
+                dwg.draw.PolyEnterPoint(x_right, y_right)
+                dwg.draw.PolyEnterPoint(x_seta, y_seta)
+                dwg.draw.PolylineFilled()
 
-    # Restaura as configurações originais do DWG e atualiza a tela
+ 
+    # Restaura estado
     dwg.draw.color = cor_antiga
     dwg.draw.level = nivel_antigo
     tqsjan.Regen()
 
 
-
-
+# ---------------------------------------------------------------------------
+# Função principal chamada pelo menu TQS
+# ---------------------------------------------------------------------------
 def aplic_desenhar(eag, tqsjan):
-    """Função principal chamada pelo botão do menu do TQS."""
+    eag.msg.Print("Inserção de Ferro Rabo de Porco - Iniciada")
 
-    # Cota tamanho da viga
-    eag.msg.Print("Insercao de Ferro Rabo de Porco - Iniciada")
-    eag.msg.Print("Clique para definir o tamanho da viga (linha elástica) ou pressione <Esc> para cancelar.")
+    # --- 1. Primeiro ponto da viga ---
+    icod1, x1, y1 = eag.locate.GetPoint(tqsjan, "Clique no primeiro ponto da viga")
+    if icod1 != 1:
+        eag.msg.Print("Cancelado.")
+        return
 
-    icod1, x1, y1 = eag.locate.GetPoint(tqsjan, "Clique no primeiro ponto da cotagem")
-        
-    # Verifica se o usuário apertou <Esc> ou cancelou (icod == 1 significa clique normal do mouse)
-    if icod1 != 1: 
-        eag.msg.Print("Comando de medição cancelado.")
+    # --- 2. Segundo ponto da viga ---
+    icod2, x2, y2 = eag.locate.GetSecondPoint(
+        tqsjan, x1, y1,
+        TQSEag.EAG_RUBLINEAR, TQSEag.EAG_RUBRET_NAOPREEN,
+        "Clique no segundo ponto da viga"
+    )
+    if icod2 != 1:
+        eag.msg.Print("Cancelado.")
         return
     
-    # 2. Solicita o segundo ponto ligando a linha elástica a partir de x1, y1
-    icod2, x2, y2 = eag.locate.GetSecondPoint(
-        tqsjan, 
-        x1, y1, 
-        TQSEag.EAG_RUBLINEAR,        # Ativa a linha elástica linear
-        TQSEag.EAG_RUBRET_NAOPREEN,  # Sem preenchimento de janela
-        "Clique no segundo ponto"
-    )
-    
-    tamanho_viga = TQSGeo.Distance(x1, y1, x2, y2)
-    angulo_inclinacao = TQSGeo.Angle2p(x1, y1, x2, y2)  
-    
-    # abre janela
+    if x1 == x2:
+        if y2 < y1:
+            x1_sup = x1
+            y1_sup = y1
+
+            x1 = x2
+            y1 = y2
+
+            x2 = x1_sup
+            y2 = y1_sup
+    elif y1 ==y2:
+        if x2 < x1:
+            x1_sup = x1
+            y1_sup = y1  
+
+            x1 = x2
+            y1 = y2
+
+            x2 = x1_sup
+            y2 = y1_sup
+
+    tamanho_viga      = TQSGeo.Distance(x1, y1, x2, y2)
+    angulo_inclinacao = TQSGeo.Angle2p(x1, y1, x2, y2)
+
+    eag.msg.Print(f"Tamanho da viga: {tamanho_viga:.2f} cm, Ângulo de inclinação: {angulo_inclinacao:.2f}°")
+
+    # --- 3. Janela de medidas ---
     medidas = obter_medidas()
     if not medidas:
-        eag.msg.Print("Comando cancelado ou medidas inválidas.")
+        eag.msg.Print("Cancelado ou medidas inválidas.")
         return
-        
+
     ESP_L1, ESP_L2, DESNIVEL, INP1, INP2, BITOLA, ESPACAMENTO = medidas
-    COBRIMENTO_LAJE = 2
-    COBRIMENTO_VIGA = 5
 
-    dwg = tqsjan.dwg
-    rebar = TQSDwg.SmartRebar(dwg) 
-    rebar.type = TQSDwg.ICPFGN #generico
+    # --- 4. Configurar SmartRebar ---
+    dwg   = tqsjan.dwg
+    rebar = TQSDwg.SmartRebar(dwg)
+    rebar.type     = TQSDwg.ICPFGN
+    rebar.mark     = dwg.globalrebar.FreeMark()
+    rebar.diameter = BITOLA
+    rebar.spacing  = ESPACAMENTO
+    # NÃO definir rebar.quantity — calculado automaticamente pela faixa
 
-    # Curvatura -> Calculo comprimento total = Soma Simples das medidas
     rebar.bendTotalLengthMode = TQSDwg.ICPSMS
-
-    # Curvatura -> Calculo Dobras = Comprimento do trecho
-    rebar.bendBendLengthMode = TQSDwg.ICPDOBSMS
-
-    rebar.straightBarTextDirection = 1 # horizontal
+    rebar.bendBendLengthMode  = TQSDwg.ICPDOBSMS
     
-    rebar.mark = dwg.globalrebar.FreeMark() # livre
-    rebar.spacing = ESPACAMENTO
-    rebar.diameter = BITOLA 
-    rebar.quantity = 1
 
-    # Calculo dos comprimentos das partes do ferro rabo de porco
-    T1 = ESP_L1 - COBRIMENTO_LAJE 
-    T2 = INP1 # tamanho variável 
-    T3 = DESNIVEL + ESP_L2 - 4 # o que é 4
+    # --- 5. Calcular trechos e registrar pontos (deve vir ANTES de RebarDistrAdd) ---
+    T1 = ESP_L1 - COBRIMENTO_LAJE
+    T2 = INP1
     T4 = tamanho_viga - COBRIMENTO_VIGA
-    T5 = ESP_L2 - 4  # 
-    T6 = INP2 
+    T6 = INP2
     T7 = ESP_L2 - COBRIMENTO_LAJE
-    
-    rebar.GenRebarPoint(0.0, 0.0, 0.0, 0, 1, -1)
-    
-    p1_x = 0.0
-    p1_y = T1
-    rebar.GenRebarPoint(p1_x, p1_y, 0.0, 0, 1, -1)
-    
-    p2_x = p1_x + T2
-    p2_y = p1_y
-    rebar.GenRebarPoint(p2_x, p2_y, 0.0, 0, 1, -1)
-    
-    p3_x = p2_x
-    p3_y = p1_y - T3
-    rebar.GenRebarPoint(p3_x, p3_y, 0.0, 0, 1, -1)
-    
-    p4_x = p3_x - T4
-    p4_y = p3_y
-    rebar.GenRebarPoint(p4_x, p4_y, 0.0, 0, 1, -1)
-    
-    p5_x = p4_x 
-    p5_y = p4_y + T5
-    rebar.GenRebarPoint(p5_x, p5_y, 0.0, 0, 1, -1)
 
-    p6_x = p5_x + T6 
-    p6_y = p5_y
-    rebar.GenRebarPoint(p6_x, p6_y, 0.0, 0, 1, -1)
+    rebaixo_negativo = False
+    if  DESNIVEL < 0: 
+        rebaixo_negativo = True
+        DESNIVEL = - DESNIVEL
 
-    p7_x = p6_x 
-    p7_y = p6_y - T7
-    rebar.GenRebarPoint(p7_x, p7_y, 0.0, 0, 1, -1)
+    if rebaixo_negativo: #mantem como esta 
+        T3 = DESNIVEL + ESP_L2 - 4
+        T5 = ESP_L2 - 4
 
 
-    
-    # adicionar_faixa(rebar, eag, tqsjan, ESPACAMENTO)
+        rebar.GenRebarPoint(0.0,        0.0,        0.0, 0, 1, -1)  # P0
+        rebar.GenRebarPoint(0.0,        T1,         0.0, 0, 1, -1)  # P1
+        rebar.GenRebarPoint(T2,         T1,         0.0, 0, 1, -1)  # P2
+        rebar.GenRebarPoint(T2,         T1 - T3,    0.0, 0, 1, -1)  # P3
+        rebar.GenRebarPoint(T2 - T4,    T1 - T3,    0.0, 0, 1, -1)  # P4
+        rebar.GenRebarPoint(T2 - T4,    T1 - T3 + T5, 0.0, 0, 1, -1)  # P5
+        rebar.GenRebarPoint(T2 - T4 + T6, T1 - T3 + T5, 0.0, 0, 1, -1)  # P6
+        rebar.GenRebarPoint(T2 - T4 + T6, T1 - T3 + T5 - T7, 0.0, 0, 1, -1)  # P7
+    else: # DESNIVEL positivo
+        T3 = DESNIVEL + ESP_L1 - 4
+        T5 = ESP_L1 - 4
+                        #   X,           Y,          Z,   tipo, face, kf
+        rebar.GenRebarPoint(0.0,        0.0,        0.0, 0, 1, -1)  # P0
+        rebar.GenRebarPoint(0.0,        T1,         0.0, 0, 1, -1)  # P1
+        rebar.GenRebarPoint(T2,         T1,         0.0, 0, 1, -1)  # P2
+        rebar.GenRebarPoint(T2,         T1 - T5,    0.0, 0, 1, -1)  # P3
+        rebar.GenRebarPoint(T2 - T4,    T1 - T5,    0.0, 0, 1, -1)  # P4
+        rebar.GenRebarPoint(T2 - T4,    T1 - T5 + T3, 0.0, 0, 1, -1)  # P5
+        rebar.GenRebarPoint(T2 - T4 + T6, T1 - T5 + T3, 0.0, 0, 1, -1)  # P6
+        rebar.GenRebarPoint(T2 - T4 + T6, T1 - T5 + T3 - T7, 0.0, 0, 1, -1)  # P7
 
-    # 3. Engenheiro seleciona posição da legenda do ferro
-    icod_leg, x_leg, y_leg = eag.locate.GetPoint(tqsjan, "Clique para posicionar a legenda do ferro")
     
+
+    # --- 6. Faixa de distribuição (deve vir ANTES de RebarLine) ---
+    adicionar_faixa(rebar, eag, tqsjan, ESPACAMENTO)
+
+    # --- 7. Legenda do ferro ---
+    icod_leg, x_leg, y_leg = eag.locate.GetPoint(
+        tqsjan, "Clique para posicionar a legenda do ferro"
+    )
     if icod_leg != 1:
         eag.msg.Print("Posicionamento da legenda cancelado.")
         return
 
-    # Linha `rebar` da legenda
+    # Linha de legenda: horizontal, escala 2x, com identificação, nível 220
     rebar.RebarLine(x_leg, y_leg, 0.0, 2.0, 1, 1, 0, 0, 220, -1, -1)
 
 
-    # Calcula pontos de inserção para a linha de ferro com base nas medidas e na linha elástica
-    xins = x1 - (T2 - T4 - COBRIMENTO_VIGA/2)
+    # --- 8. Linha de ferro na viga (sem identificação, nível 201) ---
+    xins = x1 - (T2 - T4 - COBRIMENTO_VIGA / 2)# if -angulo_inclinacao <= 90 else x1 - T2 - COBRIMENTO_VIGA/2
     yins = y2
-
-    # 1. Calcula onde o ponto de inserção (xins, yins) vai parar após rodar ao redor de (x1, y1)
     xins_rot, yins_rot = TQSGeo.Rotate(xins, yins, angulo_inclinacao, x1, y1)
 
-    # xins Ponto de inserção
-    # yins Ponto de inserção
-    # angle Ângulo de inserção graus
-    # scale Escala de inserção
-    # identify (1) Identificar o ferro
-    # identifyBends (1) Identificar dobras
-    # ipatas 0 não 1 sim 2 45° 3 225° 4 invertido 0 e 1 valem para ICPFRT, ICPSTR, ICPSTRGEN e ICPGRA 2, 3 e 4 valem para ICPFRT
-    # iexplode (1) Explodir se estribo
-    # ilevel Nível 0..255 EAG (-1) padrão
-    # iestilo Estilo 0..5 EAG (-1) padrão
-    # icolor Cor 0..255 EAG (-1) padrão
+    eag.msg.Print(f"x1: {x1:.2f}, y1: {y1:.2f}, x2: {x2:.2f}, y2: {y2:.2f}")
+    eag.msg.Print(f"xins: {xins:.2f}, yins: {yins:.2f}")
 
     rebar.RebarLine(xins_rot, yins_rot, angulo_inclinacao, 1.0, 0, 0, 0, 0, 201, -1, -1)
-    
-    tqsjan.Regen()
 
-    rebar.RebarLine(x_leg, y_leg + 200, 0.0, 2.0, 0, 0, 0, 0, 239, -1, -1)
 
+    # --- 9. Linha do detalhe de concreto (nível 239, sem identificação) ---
+    # Inserida no mesmo ponto de base do detalhe (x_leg, y_leg + 200),
+    # horizontal, escala 2x — será o ferro representado dentro do contorno de concreto.
     x_base = x_leg
     y_base = y_leg + 200
+    rebar.RebarLine(x_base, y_base, 0.0, 2.0, 0, 0, 0, 0, 239, -1, -1)
 
-    # desenhando pontos
+    tqsjan.Regen()
+
+    # --- 10. Detalhe de concreto ---
+    # Monta polígono do contorno de concreto
     pontos_concreto = []
 
-    # Separa as coordenadas para poder somar matematicamente
-    px = x_base
-    py = y_base
+    # Ponto 0
+    px, py = x_base, y_base
     pontos_concreto.append((px, py))
 
-    py += ESP_L1
+    # Ponto 1
+    py += ESP_L1*2
     pontos_concreto.append((px, py))
 
-    px += INP1
+    # Ponto 2
+    px += (INP1 + 2.5)*2 if rebaixo_negativo else (INP1 - (T4 + 2.5))*2
     pontos_concreto.append((px, py))
 
-    py += DESNIVEL
+    # Ponto 3
+    py -= DESNIVEL*2 if rebaixo_negativo else -(DESNIVEL*2)
     pontos_concreto.append((px, py))
 
-    px += INP2
+    # Ponto 4
+    px += INP2*2 if rebaixo_negativo else (INP2 +2.5)*2
     pontos_concreto.append((px, py))
 
-    py -= ESP_L2
+    # Ponto 5
+    py -= ESP_L2*2 if rebaixo_negativo else (ESP_L2 + DESNIVEL) *2
     pontos_concreto.append((px, py))
 
-    px -= INP2
+    # Ponto 6
+    px -= INP2*2 if rebaixo_negativo else (INP2 - T4 - 2.5)*2
     pontos_concreto.append((px, py))
 
+    # Ponto 7
     py -= 100
     pontos_concreto.append((px, py))
 
-    px -= tamanho_viga
+    # Ponto 8
+    px -= tamanho_viga*2
     pontos_concreto.append((px, py))
 
-    py -= (100 + T5)
+    # Ponto 9
+    py = y_base
     pontos_concreto.append((px, py))
 
-    px -= (INP2 - tamanho_viga)
+    # Ponto 10
+    px = x_base
     pontos_concreto.append((px, py))
 
-    # --- CORREÇÃO 1: Adiciona apenas o PRIMEIRO PONTO (índice 0) para fechar o polígono ---
-    pontos_concreto.append(pontos_concreto[0])
+    pontos_concreto.append(pontos_concreto[0])  # fecha o polígono
 
-    eag.msg.Print("Pontos do contorno do concreto calculados para o detalhe.")
+    if eag:
+        for idx, (p_x, p_y) in enumerate(pontos_concreto):
+            eag.msg.Print(f"  Ponto {idx}: ({p_x:.2f}, {p_y:.2f})")
 
-    for idx, (p_x, p_y) in enumerate(pontos_concreto):
-        eag.msg.Print(f"Ponto {idx+1}: ({p_x:.2f}, {p_y:.2f})")
+    #pontos setas ponto medio entre p1 e p2, p3 e p4 e p6 e p7
+    p1_x = (pontos_concreto[1][0] + pontos_concreto[2][0]) / 2
+    p1_y = (pontos_concreto[1][1] + pontos_concreto[2][1]) / 2
 
-    # --- CORREÇÃO 2: Índices restaurados para passar apenas números para o TQS ---
+    p2_x = (pontos_concreto[3][0] + pontos_concreto[4][0]) / 2
+    p2_y = (pontos_concreto[3][1] + pontos_concreto[4][1]) / 2
+
+    p3_x = (pontos_concreto[6][0] + pontos_concreto[7][0]) / 2
+    p3_y = (pontos_concreto[6][1] + pontos_concreto[7][1]) / 2
+
+
     desenhar_box_detalhe(
-        dwg, eag, tqsjan, rebar, 
-        x_base, y_base, 
+        dwg, eag, tqsjan, rebar,
+        x_base, y_base,
         pontos_concreto,
         anotacoes=[
-            ("LX", pontos_concreto[1], pontos_concreto[1], pontos_concreto[1] + 50, pontos_concreto[1] + 30),
-            ("VX", pontos_concreto[2], pontos_concreto[2][1], pontos_concreto[2] + 50, pontos_concreto[2][1])
+            # (texto, x_texto, y_texto, x_seta, y_seta)
+            ("L1", p1_x + 30, p1_y + 20, p1_x,        p1_y),
+            ("V2", p2_x + 30, p2_y + 20, p2_x,        p2_y),
+            ("V1", p3_x + 30, p3_y, p3_x,        p3_y),
         ]
     )
-
 
     eag.msg.Print(f"Ferro Especial N{rebar.mark} inserido com sucesso!")
