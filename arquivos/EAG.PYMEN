@@ -9,7 +9,7 @@ ID_GERAR_PORCO,gerar_porco.py,aplic_desenhar
 Gerar detalhe de amarracao dos negativos
 
 [MENU]
-SUBMENU,Relatorio Ferros
+SUBMENU, Ferramentas Formula
 MENUITEM,ID_EXTRACAO_FERROS,&Extrair Ferros e Gerar Relatorio
-MENUITEM,ID_GERAR_PORCO,&Gerar Porco
+MENUITEM,ID_GERAR_PORCO,&Gerar Ferro Rabo de Porco
 FIMSUBMENU
