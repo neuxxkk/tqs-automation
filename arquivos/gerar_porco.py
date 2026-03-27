@@ -230,17 +230,17 @@ def aplic_desenhar(eag, tqsjan):
     )
     if icod2 != 1: return eag.msg.Print("Cancelado.")
     
-    # Ordenação dos pontos
-    if x1 == x2 and y2 < y1:
-        x1, y1, x2, y2 = x2, y2, x1, y1
-    elif y1 == y2 and x2 < x1:
-        x1, y1, x2, y2 = x2, y2, x1, y1
+    dist_orig_p1 = TQSGeo.Distance(0, 0, x1, y1)
+    dist_orig_p2 = TQSGeo.Distance(0, 0, x2, y2)
+    if dist_orig_p2 > dist_orig_p1:
+        x1, y1, x2, y2 = x2, y2, x1, y1  # Garante que (x1, y1) seja o ponto mais distante da origem
 
     tamanho_viga = TQSGeo.Distance(x1, y1, x2, y2)
     angulo_inclinacao = TQSGeo.Angle2p(x1, y1, x2, y2)
 
     if DEBUG:
         eag.msg.Print(f"Tamanho da viga: {tamanho_viga:.2f} cm, Ângulo de inclinação: {angulo_inclinacao:.2f}°")
+        eag.msg.Print(f"Distância do ponto 1 à origem: {dist_orig_p1:.2f} cm, Distância do ponto 2 à origem: {dist_orig_p2:.2f} cm\n INVERTE: {dist_orig_p2 > dist_orig_p1}")
 
     # --- 2. Janela de medidas ---
     medidas = obter_medidas()
