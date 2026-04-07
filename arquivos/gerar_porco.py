@@ -167,10 +167,11 @@ def desenhar_box_detalhe(dwg, eag, tqsjan, rebar, x_base, y_base, pontos_concret
         dwg.draw.PolyEnterPoint(px, py)
     dwg.draw.Polyline()
 
-    # --- 2. Linha de ferro no nível 239 ---
+    # --- 2. Vigas de concreto 228 ---
     if pontos_concreto and len(pontos_concreto) >= 2:
         dwg.draw.color = 15  # branco
-        dwg.draw.level = 239
+        dwg.draw.level = 228
+        # desloca -45 cm para a esquerda (eixo X) do primeiro ponto
         dwg.draw.PolyStart()
         for px, py in pontos_concreto:
             dwg.draw.PolyEnterPoint(px, py)
@@ -322,14 +323,19 @@ def aplic_desenhar(eag, tqsjan):
     tqsjan.Regen()
 
     # --- 9. Detalhe de concreto ---
-    px, py = x_base, y_base
+    DESLOCAMENTO_DETALHE = 22.5
+    INP1 += DESLOCAMENTO_DETALHE
+
+    if not rebaixo_negativo: INP2 += DESLOCAMENTO_DETALHE
+
+    px, py = x_base - DESLOCAMENTO_DETALHE*2, y_base
     p_concreto = [(px, py)]
 
     py += ESP_L1 * 2; p_concreto.append((px, py))
     px += (INP1 + 2.5) * 2 if rebaixo_negativo else (INP1 - (T4 + 2.5)) * 2; p_concreto.append((px, py))
     py -= DESNIVEL * 2 if rebaixo_negativo else -(DESNIVEL * 2); p_concreto.append((px, py))
     px += INP2 * 2 if rebaixo_negativo else (INP2 + 2.5) * 2; p_concreto.append((px, py))
-    py -= ESP_L2 * 2 if rebaixo_negativo else (ESP_L2 + DESNIVEL) * 2; p_concreto.append((px, py))
+    py -= ESP_L2 * 2 if rebaixo_negativo else (ESP_L2) * 2; p_concreto.append((px, py))
     px -= INP2 * 2 if rebaixo_negativo else (INP2 - T4 - 2.5) * 2; p_concreto.append((px, py))
     py -= 100; p_concreto.append((px, py))
     px -= tamanho_viga * 2; p_concreto.append((px, py))
