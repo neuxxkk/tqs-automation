@@ -155,19 +155,33 @@ class ScriptLauncherApp(tk.Tk):
 	def _candidate_roots(self) -> list[Path]:
 		roots: list[Path] = []
 
-		# Em .py normal, usa a pasta do script; em .exe, usa a pasta do executavel.
-		app_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else BASE_DIR
-		roots.append(app_dir)
+		def add_root(path: Path) -> None:
+			resolved = path.resolve()
+			if resolved not in roots:
+				roots.append(resolved)
 
-		# Em PyInstaller onefile, arquivos empacotados ficam em _MEIPASS.
+		app_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else BASE_DIR
+
+		# Estrutura nova do projeto:
+		# tqs-automation/
+		#   codigo_fonte/*.py
+		#   em desenvolvimento/Scripts_Formula.py
+		#   executaveis/*.bat|*.exe
+		add_root(app_dir)
+		add_root(app_dir / "codigo_fonte")
+		add_root(app_dir.parent)
+		add_root(app_dir.parent / "codigo_fonte")
+
+		add_root(BASE_DIR)
+		add_root(BASE_DIR / "codigo_fonte")
+		add_root(BASE_DIR.parent)
+		add_root(BASE_DIR.parent / "codigo_fonte")
+
 		meipass = getattr(sys, "_MEIPASS", None)
 		if meipass:
 			meipass_path = Path(meipass)
-			if meipass_path not in roots:
-				roots.append(meipass_path)
-
-		if BASE_DIR not in roots:
-			roots.append(BASE_DIR)
+			add_root(meipass_path)
+			add_root(meipass_path / "codigo_fonte")
 
 		return roots
 
