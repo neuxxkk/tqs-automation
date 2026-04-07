@@ -1,3 +1,0 @@
-@echo off
-echo A iniciar o Calculo de Beiral...
-python -m streamlit run calc_beiral.py
