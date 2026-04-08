@@ -24,7 +24,7 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 Use o instalador com 1 clique:
 
-- **Baixar agora (Windows):** https://github.com/SEU-USUARIO/tqs-automation/releases/latest/download/Scripts-Formula-Setup.exe
+- **Baixar agora (Windows):** https://github.com/neuxxkk/tqs-automation/releases/latest/download/Scripts-Formula-Setup.exe
 
 Após baixar:
 
