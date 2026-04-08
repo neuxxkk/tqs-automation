@@ -6,15 +6,33 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 ## Sumário
 
+- [Download rápido (usuário leigo)](#download-rápido-usuário-leigo)
 - [Funcionalidades](#funcionalidades)
 - [Pré-requisitos](#pré-requisitos)
 - [Dependências](#dependências)
 - [Instalação](#instalação)
+- [Publicação do instalador (maintainer)](#publicação-do-instalador-maintainer)
 - [Como usar](#como-usar)
 - [Como funciona](#como-funciona)
 - [Saída — Planilha Excel](#saída--planilha-excel)
 - [Configurações](#configurações)
 - [Licença](#licença)
+
+---
+
+## Download rápido (usuário leigo)
+
+Use o instalador com 1 clique:
+
+- **Baixar agora (Windows):** https://github.com/SEU-USUARIO/tqs-automation/releases/latest/download/Scripts-Formula-Setup.exe
+
+Após baixar:
+
+1. Execute o `Scripts-Formula-Setup.exe`.
+2. Clique em **Avançar** até concluir.
+3. Abra o programa **Scripts Formula** no menu Iniciar ou atalho da área de trabalho.
+
+> O instalador executa uma configuração inicial para preparar todas as funcionalidades.
 
 ---
 
@@ -55,6 +73,14 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 ## Instalação
 
+### Instalação para usuário final (recomendada)
+
+1. Baixe o instalador em **Download rápido (usuário leigo)**.
+2. Execute o setup e finalize o assistente.
+3. Abra o atalho **Scripts Formula**.
+
+### Instalação manual (modo desenvolvedor)
+
 1. **Clone ou baixe** este repositório.
 
 2. Instale o Python 3.13 com `pip` e variável de ambiente:
@@ -70,6 +96,30 @@ Ferramenta de automação para extração e classificação de ferros de armadur
    ```
 
 4. Copie todo o conteúdo de `\arquivos` e a pasta `imgs` para `C:\TQSW\EXEC\Python` do seu projeto TQS.
+
+---
+
+## Publicação do instalador (maintainer)
+
+Arquivos já preparados no projeto:
+
+- Script do Inno Setup: `instalador/ScriptsFormula.iss`
+- Pós-instalação automática: `instalador/instalar_completo.bat`
+- Build local do instalador: `instalador/build_installer.ps1`
+- Workflow de build/release: `.github/workflows/build-installer.yml`
+
+Fluxo recomendado:
+
+1. Crie uma Release no GitHub.
+2. O workflow vai gerar `Scripts-Formula-Setup.exe`.
+3. O arquivo será anexado automaticamente na Release publicada.
+4. Atualize o link do README trocando `SEU-USUARIO` pelo dono do repositório.
+
+Para build local em Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\instalador\build_installer.ps1
+```
 
 ---
 

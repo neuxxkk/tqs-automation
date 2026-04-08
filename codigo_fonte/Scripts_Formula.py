@@ -165,7 +165,6 @@ class ScriptLauncherApp(tk.Tk):
 		# Estrutura nova do projeto:
 		# tqs-automation/
 		#   codigo_fonte/*.py
-		#   em desenvolvimento/Scripts_Formula.py
 		#   executaveis/*.bat|*.exe
 		add_root(app_dir)
 		add_root(app_dir / "codigo_fonte")
