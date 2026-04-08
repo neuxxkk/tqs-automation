@@ -27,6 +27,7 @@ if not defined PY_EXE (
     echo Python nao encontrado no computador.
     echo Instale Python 3.13 e execute este instalador novamente.
     echo Download: https://www.python.org/downloads/release/python-31312/
+    start "" "https://www.python.org/downloads/release/python-31312/"
     pause
     exit /b 1
 )

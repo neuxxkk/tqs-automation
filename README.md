@@ -24,7 +24,7 @@ Ferramenta de automação para extração e classificação de ferros de armadur
 
 Use o instalador com 1 clique:
 
-- **Baixar agora (Windows):** https://github.com/SEU-USUARIO/tqs-automation/releases/latest/download/Scripts-Formula-Setup.exe
+- **Baixar agora (Windows):** https://github.com/neuxxkk/tqs-automation/releases/latest/download/Scripts-Formula-Setup.exe
 
 Após baixar:
 
@@ -113,7 +113,7 @@ Fluxo recomendado:
 1. Crie uma Release no GitHub.
 2. O workflow vai gerar `Scripts-Formula-Setup.exe`.
 3. O arquivo será anexado automaticamente na Release publicada.
-4. Atualize o link do README trocando `SEU-USUARIO` pelo dono do repositório.
+4. Divulgue o link de download direto no README e na documentação interna do time.
 
 Para build local em Windows:
 

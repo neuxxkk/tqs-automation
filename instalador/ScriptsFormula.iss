@@ -30,4 +30,4 @@ Name: "{autoprograms}\Scripts Formula"; Filename: "{app}\executaveis\Scripts.bat
 Name: "{autodesktop}\Scripts Formula"; Filename: "{app}\executaveis\Scripts.bat"; WorkingDir: "{app}\executaveis"
 
 [Run]
-Filename: "{app}\instalador\instalar_completo.bat"; Description: "Executar configuracao inicial agora"; Flags: postinstall runascurrentuser waituntilterminated
+Filename: "{app}\instalador\instalar_completo.bat"; Description: "Executar configuracao inicial agora"; Flags: postinstall waituntilterminated
