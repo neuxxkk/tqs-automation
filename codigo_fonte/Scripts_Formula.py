@@ -103,14 +103,6 @@ class ScriptLauncherApp(tk.Tk):
 		)
 		btn_beiral.pack(fill="x")
 
-		btn_instalar = ttk.Button(
-			actions_frame,
-			text="Instalar Scripts em C:/TQSW/EXEC/PYTHON",
-			style="Secondary.TButton",
-			command=self._run_instalador_tqs,
-		)
-		btn_instalar.pack(fill="x", pady=(10, 0))
-
 		link_btn = tk.Label(
 			outer,
 			text="Sistema de Atividades",
@@ -287,19 +279,6 @@ class ScriptLauncherApp(tk.Tk):
 			self._run_silent_process(command, script_path.parent, "calc_beiral.py")
 		except Exception as exc:
 			messagebox.showerror("Erro ao executar", f"Falha ao abrir calc_beiral.py:\n{exc}")
-
-	def _run_instalador_tqs(self) -> None:
-		if not messagebox.askyesno(
-			"Confirmar instalacao",
-			"A instalacao vai baixar dependencias pip e copiar todo o conteudo de /arquivos para C:/TQSW/EXEC/PYTHON. Deseja continuar?",
-		):
-			return
-
-		self._run_python_script("instalar_arquivos_tqs.py")
-		messagebox.showinfo(
-			"Instalacao iniciada",
-			"Processo de instalacao iniciado em segundo plano. Aguarde a conclusao.",
-		)
 
 	def _open_activities(self) -> None:
 		if not ACTIVITIES_URL:

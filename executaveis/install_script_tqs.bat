@@ -1,3 +1,0 @@
-@echo off
-echo A iniciar o Detallhamento de vigas...
-python ..\codigo_fonte\instalar_arquivos_tqs.py
