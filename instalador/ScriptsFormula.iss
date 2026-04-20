@@ -26,8 +26,8 @@ Source: "..\executaveis\*"; DestDir: "{app}\executaveis"; Flags: recursesubdirs 
 Source: "instalar_completo.bat"; DestDir: "{app}\instalador"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Scripts Formula"; Filename: "{app}\executaveis\Scripts.bat"; WorkingDir: "{app}\executaveis"
-Name: "{autodesktop}\Scripts Formula"; Filename: "{app}\executaveis\Scripts.bat"; WorkingDir: "{app}\executaveis"
+Name: "{autoprograms}\Scripts Formula"; Filename: "{app}\executaveis\Scripts.bat"; WorkingDir: "{app}\executaveis"; IconFilename: "{app}\arquivos\imgs\engenharia_formula_logo.ico"
+Name: "{autodesktop}\Scripts Formula"; Filename: "{app}\executaveis\Scripts.bat"; WorkingDir: "{app}\executaveis"; IconFilename: "{app}\arquivos\imgs\engenharia_formula_logo.ico"
 
 [Run]
 Filename: "{app}\instalador\instalar_completo.bat"; Description: "Executar configuracao inicial agora"; Flags: postinstall waituntilterminated
