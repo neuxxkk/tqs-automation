@@ -20,226 +20,131 @@ SESSION_RESULT_KEY = "beiral_resultado"
 THEME_CSS = """
 <style>
     :root {
-        --page-bg-start: #edf2f7;
-        --page-bg-end: #dbe4ee;
-        --panel-bg: rgba(255, 255, 255, 0.9);
-        --ink-strong: #182534;
-        --ink-soft: #5d6c7c;
-        --accent: #1d4f7a;
-        --accent-strong: #12324d;
-        --line: rgba(24, 37, 52, 0.11);
-        --result-bg: rgba(29, 79, 122, 0.09);
-        --result-line: rgba(29, 79, 122, 0.24);
-        --badge-bg: rgba(29, 79, 122, 0.08);
-        --shadow: 0 16px 42px rgba(33, 52, 74, 0.08);
+        --page-bg: #f8f9fa;
+        --panel-bg: #ffffff;
+        --ink-strong: #1a202c;
+        --ink-soft: #4a5568;
+        --accent: #2c5282;
+        --accent-strong: #1a365d;
+        --border-color: #e2e8f0;
+        --result-bg: #f7fafc;
+        --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
     }
 
     [data-testid="stAppViewContainer"] {
-        background:
-            radial-gradient(circle at top left, rgba(255, 255, 255, 0.78), transparent 28%),
-            linear-gradient(180deg, var(--page-bg-start) 0%, var(--page-bg-end) 100%);
+        background-color: var(--page-bg);
     }
 
     [data-testid="stAppViewBlockContainer"] {
-        max-width: 1180px;
-        padding-top: 2.2rem;
-        padding-bottom: 3rem;
+        max-width: 1100px;
+        padding-top: 2rem;
     }
 
     h1, h2, h3 {
         color: var(--ink-strong);
-        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-        letter-spacing: -0.02em;
-    }
-
-    p, li, label, .stMarkdown, .stCaption {
-        color: var(--ink-soft);
+        font-family: "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+        font-weight: 600;
+        letter-spacing: -0.01em;
     }
 
     [data-testid="stForm"] {
         background: var(--panel-bg);
-        border: 1px solid var(--line);
-        border-radius: 24px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
         box-shadow: var(--shadow);
-        padding: 1.15rem 1.15rem 1.35rem 1.15rem;
+        padding: 1.5rem;
     }
 
     [data-testid="stMetric"] {
         background: var(--panel-bg);
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 0.65rem 0.9rem;
-        box-shadow: 0 12px 28px rgba(66, 50, 34, 0.06);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 1rem;
+        box-shadow: var(--shadow);
     }
 
     [data-testid="stMetricLabel"] {
         color: var(--ink-soft);
-        font-size: 0.84rem;
+        font-size: 0.75rem;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.05em;
+        font-weight: 600;
     }
 
     [data-testid="stMetricValue"] {
-        color: var(--ink-strong);
-    }
-
-    .stTextInput input, .stNumberInput input {
-        background: rgba(255, 255, 255, 0.85);
+        color: var(--accent-strong);
+        font-weight: 700;
     }
 
     .stButton > button,
     .stDownloadButton > button,
     button[kind="primaryFormSubmit"] {
-        border-radius: 999px;
-        border: 0;
-        background: linear-gradient(135deg, var(--accent), #2f699b);
-        color: #f8fbff;
-        font-weight: 600;
-        box-shadow: 0 16px 34px rgba(29, 79, 122, 0.22);
+        border-radius: 4px;
+        border: 1px solid var(--accent-strong);
+        background-color: var(--accent-strong);
+        color: #ffffff;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        transition: all 0.2s;
     }
 
-    .stDownloadButton > button {
-        background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    .stButton > button:hover {
+        background-color: var(--accent);
+        border-color: var(--accent);
     }
 
-    .top-shell,
-    .report-shell,
-    .section-shell,
-    .formula-shell,
-    .drawing-shell,
-    .armacao-shell,
-    .badge-shell {
+    .shell-container {
         background: var(--panel-bg);
-        border: 1px solid var(--line);
-        border-radius: 24px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
         box-shadow: var(--shadow);
     }
 
-    .top-shell {
-        padding: 1.25rem 1.45rem;
-        margin-bottom: 1rem;
-        background:
-            linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.92));
-    }
-
-    .report-shell,
-    .section-shell,
-    .formula-shell,
-    .drawing-shell,
-    .armacao-shell,
-    .badge-shell {
-        padding: 1.05rem 1.15rem;
-    }
-
-    .top-kicker,
-    .section-kicker {
+    .kicker {
         color: var(--accent);
-        font-size: 0.76rem;
+        font-size: 0.7rem;
         font-weight: 700;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
-        margin-bottom: 0.45rem;
+        margin-bottom: 0.5rem;
+        display: block;
     }
 
-    .top-title,
-    .report-title {
-        color: var(--ink-strong);
-        font-size: 1.9rem;
-        line-height: 1.05;
-        font-weight: 700;
-        margin: 0;
+    .title-large {
+        font-size: 1.75rem;
+        margin-bottom: 0.5rem;
     }
 
-    .top-copy,
-    .report-copy,
-    .section-copy {
+    .copy-text {
         color: var(--ink-soft);
-        margin-top: 0.7rem;
-        line-height: 1.55;
-    }
-
-    .top-badges {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-top: 1rem;
-    }
-
-    .top-badge {
-        border-radius: 999px;
-        border: 1px solid rgba(29, 79, 122, 0.14);
-        background: var(--badge-bg);
-        color: var(--ink-strong);
-        font-size: 0.84rem;
-        padding: 0.42rem 0.76rem;
-    }
-
-    .report-shell {
-        margin-top: 1rem;
-        margin-bottom: 0.9rem;
-        background:
-            linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.92));
-    }
-
-    .result-highlight {
-        display: inline-block;
-        margin-top: 0.85rem;
-        padding: 0.8rem 1rem;
-        border-radius: 18px;
-        background: var(--result-bg);
-        border: 1px solid var(--result-line);
-        color: var(--ink-strong);
-        font-weight: 700;
-        font-size: 1.22rem;
-    }
-
-    .section-shell,
-    .formula-shell,
-    .drawing-shell,
-    .armacao-shell {
-        height: 100%;
-    }
-
-    .section-shell ul {
-        margin: 0.5rem 0 0 1rem;
-        padding: 0;
-    }
-
-    .section-shell li,
-    .formula-shell li {
-        color: var(--ink-strong);
-        margin-bottom: 0.35rem;
-    }
-
-    .formula-shell code {
-        white-space: pre-wrap;
-        color: var(--ink-strong);
         font-size: 0.95rem;
+        line-height: 1.6;
     }
 
-    .inline-note {
-        color: var(--ink-soft);
-        font-size: 0.92rem;
-        margin-top: 0.35rem;
+    .result-box {
+        background: var(--result-bg);
+        border-left: 4px solid var(--accent);
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 0 4px 4px 0;
     }
 
-    .armacao-value {
-        color: var(--ink-strong);
-        font-size: 1.2rem;
+    .result-value {
+        font-size: 1.5rem;
         font-weight: 700;
-        margin-top: 0.6rem;
+        color: var(--accent-strong);
     }
 
-    .calc-badge {
-        display: inline-block;
-        margin-top: 0.55rem;
-        padding: 0.42rem 0.76rem;
-        border-radius: 999px;
-        background: var(--badge-bg);
-        border: 1px solid rgba(29, 79, 122, 0.14);
-        color: var(--accent-strong);
+    .code-block {
+        font-family: "Cascadia Code", "Consolas", monospace;
+        background: #f1f5f9;
+        padding: 0.75rem;
+        border-radius: 4px;
+        border: 1px solid #cbd5e1;
         font-size: 0.85rem;
-        font-weight: 600;
+        color: #334155;
     }
 </style>
 """
@@ -252,18 +157,13 @@ def _inject_styles() -> None:
 def _render_top_shell() -> None:
     st.markdown(
         """
-        <section class="top-shell">
-            <div class="top-kicker">Calculo Estrutural</div>
-            <h1 class="top-title">Calculo de Beiral</h1>
-            <p class="top-copy">
-                Ferramenta para lancamento de cargas, verificacao do momento e emissao do relatorio tecnico.
+        <div class="shell-container">
+            <span class="kicker">Engenharia Estrutural</span>
+            <h1 class="title-large">Memorial de Calculo: Beiral</h1>
+            <p class="copy-text">
+                Analise de esforços solicitantes, majoração normativa e verificação de geometria para beirais em balanço.
             </p>
-            <div class="top-badges">
-                <span class="top-badge">Beiral em balanco</span>
-                <span class="top-badge">Memoria de calculo</span>
-                <span class="top-badge">PDF</span>
-            </div>
-        </section>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -272,25 +172,25 @@ def _render_top_shell() -> None:
 def _render_section_intro(title: str, copy: str) -> None:
     st.markdown(
         f"""
-        <section class="section-shell">
-            <div class="section-kicker">Entrada</div>
+        <div class="shell-container">
+            <span class="kicker">Parametros de Entrada</span>
             <h3>{html.escape(title)}</h3>
-            <p class="section-copy">{html.escape(copy)}</p>
-        </section>
+            <p class="copy-text">{html.escape(copy)}</p>
+        </div>
         """,
         unsafe_allow_html=True,
     )
 
 
 def _render_list_card(title: str, kicker: str, items: list[str]) -> None:
-    list_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
+    list_html = "".join(f"<li style='margin-bottom: 0.25rem;'>{html.escape(item)}</li>" for item in items)
     st.markdown(
         f"""
-        <section class="section-shell">
-            <div class="section-kicker">{html.escape(kicker)}</div>
-            <h3>{html.escape(title)}</h3>
-            <ul>{list_html}</ul>
-        </section>
+        <div class="shell-container">
+            <span class="kicker">{html.escape(kicker)}</span>
+            <h4 style="margin-top:0; margin-bottom:0.75rem;">{html.escape(title)}</h4>
+            <ul style="margin: 0; padding-left: 1.2rem; color: var(--ink-soft); font-size: 0.9rem;">{list_html}</ul>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -298,25 +198,24 @@ def _render_list_card(title: str, kicker: str, items: list[str]) -> None:
 
 def _render_formula_card(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> None:
     formula_m = (
-        f"({resultado.carga_total_q_tf_m2:.3f} x "
-        f"{resultado.largura_m:.2f} x {resultado.largura_m / 2:.2f})"
+        f"M = ({resultado.carga_total_q_tf_m2:.3f} × {resultado.largura_m:.2f}² ÷ 2)"
     )
     if resultado.possui_carga_concentrada:
         formula_m += (
-            f" + ({resultado.carga_total_p_tf_m:.3f} x "
-            f"{resultado.largura_m:.2f})"
+            f" + ({resultado.carga_total_p_tf_m:.3f} × {resultado.largura_m:.2f})"
         )
 
     st.markdown(
         f"""
-        <section class="formula-shell">
-            <div class="section-kicker">Memoria</div>
-            <h3>Momento e majoracao</h3>
-            <p class="section-copy">A expressao abaixo resume o fechamento principal do relatorio.</p>
-            <p><code>M = {html.escape(formula_m)} = {resultado.momento_total_tf_m:.3f} tf.m</code></p>
-            <p><code>Y = 1.95 - 0.05 x {entrada.espessura_cm:.0f} = {resultado.majorador:.2f}</code></p>
-            <p><code>Msk = {resultado.momento_total_tf_m:.3f} x {resultado.majorador:.2f} = {resultado.msk_tf_m:.2f} tf.m</code></p>
-        </section>
+        <div class="shell-container">
+            <span class="kicker">Memoria de Calculo</span>
+            <h4 style="margin-top:0;">Equações de Momento</h4>
+            <div class="code-block">
+                {html.escape(formula_m)} = {resultado.momento_total_tf_m:.4f} tf.m<br>
+                γ_f = 1.95 - 0.05 × {entrada.espessura_cm:.0f} = {resultado.majorador:.2f}<br>
+                <strong>Msk = M × γ_f = {resultado.msk_tf_m:.3f} tf.m</strong>
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -325,11 +224,11 @@ def _render_formula_card(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> 
 def _render_armacao_card(entrada: EntradaBeiral) -> None:
     st.markdown(
         """
-        <section class="armacao-shell">
-            <div class="section-kicker">Complemento</div>
-            <h3>Armacao minima</h3>
-            <p class="section-copy">Preencha a armacao minima diretamente na linha abaixo para incluir o detalhe no relatorio.</p>
-        </section>
+        <div class="shell-container" style="background-color: #f8fafc; border-style: dashed;">
+            <span class="kicker">Detalhamento</span>
+            <h4 style="margin-top:0;">Armação Mínima Adotada</h4>
+            <p class="copy-text" style="font-size: 0.85rem;">Defina a bitola e o espaçamento para inclusão no relatório técnico.</p>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -354,15 +253,18 @@ def _render_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> Non
 
     st.markdown(
         f"""
-        <section class="report-shell">
-            <div class="section-kicker">Saida</div>
-            <h2 class="report-title">{safe_project_name}</h2>
-            <p class="report-copy">
-                Beiral com secao de {entrada.largura_cm:.0f} cm e espessura de {entrada.espessura_cm:.0f} cm.
-                O relatorio abaixo consolida cargas, momento e fechamento final para exportacao.
+        <div class="shell-container" style="border-top: 4px solid var(--accent-strong);">
+            <span class="kicker">Relatorio Tecnico</span>
+            <h2 class="title-large">{safe_project_name}</h2>
+            <p class="copy-text">
+                Beiral com balanço de {entrada.largura_cm:.0f} cm e espessura de {entrada.espessura_cm:.0f} cm.
+                O processamento abaixo consolida as cargas e o momento fletor solicitante.
             </p>
-            <div class="result-highlight">Resultado final: Msk = {resultado.msk_tf_m:.2f} tf.m</div>
-        </section>
+            <div class="result-box">
+                <span class="kicker">Momento de Calculo</span>
+                <div class="result-value">Msk = {resultado.msk_tf_m:.3f} tf.m</div>
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -371,21 +273,20 @@ def _render_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> Non
 
     if resultado.majorador <= 0:
         st.warning(
-            "O majorador ficou menor ou igual a zero. Vale revisar a formula e os dados informados."
+            "Atenção: O fator de majoração calculado é inválido (<= 0). Verifique os dados de entrada."
         )
 
-    st.success("Calculo efetuado com sucesso. Confira o relatorio abaixo.")
+    st.success("Cálculo finalizado. O memorial técnico está pronto para exportação.")
 
-    col_img, col_q = st.columns([1.05, 1.2], gap="large")
+    col_img, col_q = st.columns([1.1, 1], gap="large")
 
     with col_img:
         st.markdown(
             """
-            <section class="drawing-shell">
-                <div class="section-kicker">Esquema</div>
-                <h3>Vista simplificada do beiral</h3>
-                <p class="inline-note">O desenho responde aos dados atuais e marca a presenca de carga P quando aplicavel.</p>
-            </section>
+            <div class="shell-container">
+                <span class="kicker">Esquema Tecnico</span>
+                <h4 style="margin-top:0;">Vista do Balanço</h4>
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -400,13 +301,13 @@ def _render_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> Non
 
     with col_q:
         _render_list_card(
-            title="Cargas distribuidas (q)",
-            kicker="Cargas",
+            title="Cargas Distribuidas (q)",
+            kicker="Carregamento",
             items=[
-                f"Permanente: {entrada.carga_permanente_tf_m2:.3f} tf/m2",
-                f"Acidental: {entrada.carga_acidental_tf_m2:.3f} tf/m2",
-                f"Peso proprio: 2.5 x {resultado.espessura_m:.2f} = {resultado.peso_proprio_laje_tf_m2:.3f} tf/m2",
-                f"Sigma q = {resultado.carga_total_q_tf_m2:.3f} tf/m2",
+                f"Permanente: {entrada.carga_permanente_tf_m2:.3f} tf/m²",
+                f"Acidental: {entrada.carga_acidental_tf_m2:.3f} tf/m²",
+                f"Peso Próprio (G1): 2.5 × {resultado.espessura_m:.2f} = {resultado.peso_proprio_laje_tf_m2:.3f} tf/m²",
+                f"Total q = {resultado.carga_total_q_tf_m2:.3f} tf/m²",
             ],
         )
 
@@ -415,31 +316,31 @@ def _render_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> Non
     carga_p_items: list[str] = []
     if entrada.possui_nervura_borda:
         carga_p_items.append(
-            f"Nervura N1 ({entrada.espessura_nervura_cm:.0f} x {entrada.altura_nervura_cm:.0f})"
+            f"Nervura N1 ({entrada.espessura_nervura_cm:.0f}×{entrada.altura_nervura_cm:.0f})"
         )
         carga_p_items.append(
-            "Peso proprio = "
-            f"{entrada.espessura_nervura_cm / 100:.2f} x "
-            f"{entrada.altura_nervura_cm / 100:.2f} x 2.5 = "
+            "Peso Próprio = "
+            f"{entrada.espessura_nervura_cm / 100:.2f} × "
+            f"{entrada.altura_nervura_cm / 100:.2f} × 2.5 = "
             f"{resultado.peso_proprio_nervura_tf_m:.3f} tf/m"
         )
     if entrada.possui_guarda_corpo:
         carga_p_items.append(
-            "Carga da alvenaria = "
-            f"{entrada.espessura_alvenaria_cm / 100:.2f} x "
-            f"{entrada.altura_alvenaria_cm / 100:.2f} x "
+            "Carga Alvenaria = "
+            f"{entrada.espessura_alvenaria_cm / 100:.2f} × "
+            f"{entrada.altura_alvenaria_cm / 100:.2f} × "
             f"{PESO_ESPECIFICO_ALVENARIA_TF_M3:.1f} = "
             f"{resultado.carga_alvenaria_tf_m:.3f} tf/m"
         )
     if resultado.possui_carga_concentrada:
-        carga_p_items.append(f"Sigma P = {resultado.carga_total_p_tf_m:.3f} tf/m")
+        carga_p_items.append(f"Total P = {resultado.carga_total_p_tf_m:.3f} tf/m")
     else:
-        carga_p_items.append("Nenhuma carga concentrada ativa")
+        carga_p_items.append("Sem carga concentrada ativa")
 
     with col_p:
         _render_list_card(
-            title="Carga concentrada (P)",
-            kicker="Borda",
+            title="Cargas na Borda (P)",
+            kicker="Carregamento P",
             items=carga_p_items,
         )
 
@@ -447,35 +348,35 @@ def _render_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> Non
         _render_formula_card(entrada, resultado)
 
     _render_armacao_card(entrada)
-    col_label_1, col_bitola, col_label_2, col_espacamento = st.columns(
-        [1.6, 1.1, 0.55, 1.1],
-        gap="small",
+    
+    # Refined layout for minimal reinforcement inputs
+    col_arm_icon, col_arm_bitola, col_arm_sep, col_arm_espacamento = st.columns(
+        [0.4, 1.2, 0.4, 1.2],
+        gap="small"
     )
 
-    with col_label_1:
-        st.markdown("**Armacao minima**")
-
-    with col_bitola:
+    with col_arm_icon:
+        st.markdown("<div style='margin-top: 2.2rem; font-size: 1.5rem; text-align: center;'>ø</div>", unsafe_allow_html=True)
+    
+    with col_arm_bitola:
         bitola = st.number_input(
-            "Bitola",
+            "Bitola (mm)",
             min_value=0.0,
-            value=float(entrada.armacao_minima_bitola_mm),
+            value=float(entrada.armacao_minima_bitola_mm) if entrada.armacao_minima_bitola_mm not in (None, 0) else 8.0,
             step=0.5,
             key="armacao_minima_bitola_mm",
-            label_visibility="collapsed",
         )
 
-    with col_label_2:
-        st.markdown("**c/**")
+    with col_arm_sep:
+        st.markdown("<div style='margin-top: 2.4rem; font-size: 1.1rem; text-align: center; color: var(--ink-soft);'>c/</div>", unsafe_allow_html=True)
 
-    with col_espacamento:
+    with col_arm_espacamento:
         espacamento = st.number_input(
-            "Espacamento",
+            "Espaçamento (cm)",
             min_value=0.0,
-            value=float(entrada.armacao_minima_espacamento_cm),
+            value=float(entrada.armacao_minima_espacamento_cm)  if entrada.armacao_minima_espacamento_cm not in (None, 0) else 14.0,
             step=1.0,
             key="armacao_minima_espacamento_cm",
-            label_visibility="collapsed",
         )
 
     entrada.armacao_minima_bitola_mm = bitola
@@ -522,13 +423,13 @@ with col_intro:
 with col_overview:
     st.markdown(
         """
-        <section class="section-shell">
-            <div class="section-kicker">Referencia</div>
-            <h3>Dados de entrada</h3>
-            <p class="section-copy">
-                O processamento considera cargas distribuidas, nervura de borda e alvenaria sobre o guarda-corpo quando houver.
+        <div class="shell-container">
+            <span class="kicker">Referencia</span>
+            <h3>Dados do Projeto</h3>
+            <p class="copy-text">
+                O processamento considera as cargas permanentes, acidentais e elementos de borda (nervuras e guarda-corpos).
             </p>
-        </section>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -536,30 +437,30 @@ with col_overview:
 col1, col2 = st.columns(2, gap="large")
 
 with col1:
-    st.subheader("Dimensoes da laje")
+    st.subheader("Geometria da Laje")
     espessura_cm = st.number_input(
-        "Espessura do beiral - esp1 (cm)",
+        "Espessura do beiral (cm)",
         min_value=1.0,
         value=14.0,
         step=1.0,
     )
     largura_cm = st.number_input(
-        "Balanco / largura - larg1 (cm)",
+        "Largura do balanço (cm)",
         min_value=1.0,
         value=110.0,
         step=1.0,
     )
 
 with col2:
-    st.subheader("Cargas distribuidas (q)")
+    st.subheader("Cargas de Superfície (q)")
     carga_permanente = st.number_input(
-        "Carga permanente - q1 (tf/m2)",
+        "Carga permanente - G2 (tf/m2)",
         min_value=0.0,
         value=0.3,
         step=0.05,
     )
     carga_acidental = st.number_input(
-        "Carga acidental - q2 (tf/m2)",
+        "Carga acidental - Q (tf/m2)",
         min_value=0.0,
         value=0.2,
         step=0.05,
@@ -567,25 +468,25 @@ with col2:
 
 st.markdown(
     """
-    <section class="section-shell">
-        <div class="section-kicker">Borda</div>
-        <h3>Cargas concentradas</h3>
-        <p class="section-copy">
-            Ative apenas os elementos presentes no caso real. Quando nao utilizados, os campos permanecem zerados.
+    <div class="shell-container">
+        <span class="kicker">Cargas Lineares</span>
+        <h3>Elementos de Borda</h3>
+        <p class="copy-text">
+            Ative os elementos presentes na extremidade do balanço para cálculo da carga concentrada P.
         </p>
-    </section>
+    </div>
     """,
     unsafe_allow_html=True,
 )
 
-st.subheader("Cargas concentradas na borda (P)")
+st.subheader("Cargas Concentradas na Borda (P)")
 col3, col4 = st.columns(2, gap="large")
 
 with col3:
     possui_nervura_borda = st.checkbox("Possui nervura de borda?", value=True)
     if possui_nervura_borda:
         espessura_nervura_cm = st.number_input(
-            "Espessura da nervura (cm)",
+            "Largura da nervura (cm)",
             min_value=1.0,
             value=14.0,
             step=1.0,
@@ -601,7 +502,7 @@ with col3:
         altura_nervura_cm = 0.0
 
 with col4:
-    possui_guarda_corpo = st.checkbox("Possui guarda-corpos?", value=False)
+    possui_guarda_corpo = st.checkbox("Possui alvenaria (Guarda-corpo)?", value=False)
     if possui_guarda_corpo:
         espessura_alvenaria_cm = st.number_input(
             "Espessura da alvenaria (cm)",
@@ -622,14 +523,13 @@ with col4:
         )
         st.markdown(
             f"""
-            <section class="section-shell">
-                <div class="section-kicker">Alvenaria</div>
-                <h3>Carga calculada</h3>
-                <p class="section-copy">
-                    Carga da alvenaria = {espessura_alvenaria_cm / 100:.2f} x {altura_alvenaria_cm / 100:.2f} x {PESO_ESPECIFICO_ALVENARIA_TF_M3:.1f} = <strong>{carga_alvenaria:.3f} tf/m</strong>
+            <div class="shell-container" style="background-color: #f1f5f9;">
+                <span class="kicker">Calculo Automático</span>
+                <p class="copy-text">
+                    Carga linear da alvenaria: <strong>{carga_alvenaria:.3f} tf/m</strong><br>
+                    <small>(Peso específico considerado: 1.3 tf/m³)</small>
                 </p>
-                <div class="calc-badge">Peso especifico = 1,3 tf/m3</div>
-            </section>
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -638,7 +538,7 @@ with col4:
         altura_alvenaria_cm = 0.0
 
 submitted = st.button(
-    "Gerar memoria de calculo",
+    "Calcular Memorial de Calculo",
     use_container_width=True,
     type="primary",
 )

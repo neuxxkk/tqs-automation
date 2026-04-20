@@ -9,6 +9,9 @@ PESO_ESPECIFICO_ALVENARIA_TF_M3 = 1.3
 
 @dataclass(slots=True)
 class EntradaBeiral:
+    """
+    Representa os dados de entrada necessarios para o calculo de um beiral em balanco.
+    """
     nome_projeto: str
     espessura_cm: float
     largura_cm: float
@@ -26,6 +29,9 @@ class EntradaBeiral:
 
 @dataclass(slots=True)
 class ResultadoBeiral:
+    """
+    Representa os resultados obtidos apos o processamento das cargas e momentos.
+    """
     espessura_m: float
     largura_m: float
     peso_proprio_laje_tf_m2: float
@@ -42,6 +48,9 @@ class ResultadoBeiral:
 
 
 def validar_entrada(entrada: EntradaBeiral) -> list[str]:
+    """
+    Valida os dados de entrada para garantir que os valores sejam consistentes.
+    """
     erros: list[str] = []
 
     if not entrada.nome_projeto.strip():
@@ -81,6 +90,9 @@ def validar_entrada(entrada: EntradaBeiral) -> list[str]:
 
 
 def calcular_beiral(entrada: EntradaBeiral) -> ResultadoBeiral:
+    """
+    Executa o processamento estrutural para determinar momentos e cargas do beiral.
+    """
     espessura_m = entrada.espessura_cm / 100.0
     largura_m = entrada.largura_cm / 100.0
 
