@@ -5,6 +5,9 @@ import threading
 import tkinter as tk
 from tkinter import font as tkfont
 
+# Suprime janela de console em subprocessos no Windows
+CREATE_NO_WINDOW = 0x08000000
+
 # ---------------------------------------------------------------------------
 # Paleta — frontend_design.md
 # ---------------------------------------------------------------------------
@@ -54,6 +57,7 @@ def find_python():
                 [exe] + args + ["-c",
                     "import sys; exit(0 if getattr(sys,'_is_gil_enabled',lambda:True)() else 1)"],
                 capture_output=True,
+                creationflags=CREATE_NO_WINDOW,
             )
             if result.returncode == 0:
                 return exe, args
@@ -92,6 +96,10 @@ class InstallerWindow:
         self._done        = False
         self._error       = False
 
+        self.root.geometry("480x180")
+        self.root.resizable(False, True)
+        self.root.minsize(480, 180)
+        self.root.maxsize(480, 9999)
         self._build_ui()
         self.root.update_idletasks()
         self._center()
@@ -141,7 +149,7 @@ class InstallerWindow:
         tk.Label(
             outer, textvariable=self._status_var,
             font=("Segoe UI", 10), bg=C_BG, fg=C_TEXT_PRI,
-            anchor="w", wraplength=360,
+            anchor="w", wraplength=400,
         ).pack(fill="x", pady=(0, 10))
 
         # Progress bar (canvas-based for full colour control)
@@ -273,6 +281,7 @@ class InstallerWindow:
                     text=True,
                     encoding="utf-8",
                     errors="replace",
+                    creationflags=CREATE_NO_WINDOW,
                 )
                 for line in proc.stdout:
                     self.root.after(0, self._append_log, line)
