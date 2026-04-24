@@ -1,3 +1,3 @@
 @echo off
 echo A iniciar o Detallhamento de vigas...
-python ..\codigo_fonte\detalhes_viga.py
+python ..\src\detalhes_viga.py

@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-set "APP_SCRIPT=..\codigo_fonte\Scripts_Formula.py"
+set "APP_SCRIPT=..\src\app.py"
 
 where pythonw >nul 2>nul
 if %errorlevel%==0 (

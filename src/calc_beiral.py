@@ -19,20 +19,26 @@ SESSION_INPUT_KEY = "beiral_entrada"
 SESSION_RESULT_KEY = "beiral_resultado"
 THEME_CSS = """
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+
     :root {
-        --page-bg: #f8f9fa;
-        --panel-bg: #ffffff;
-        --ink-strong: #1a202c;
-        --ink-soft: #4a5568;
-        --accent: #2c5282;
-        --accent-strong: #1a365d;
-        --border-color: #e2e8f0;
-        --result-bg: #f7fafc;
-        --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        --verde-principal:   #5a8a4a;
+        --verde-hover:       #3b6d11;
+        --verde-claro:       #eaf3de;
+        --verde-texto:       #27500a;
+        --cinza-900:         #1e1e1c;
+        --cinza-800:         #2c2c2a;
+        --cinza-600:         #6b6b6b;
+        --cinza-300:         #b4b2a9;
+        --cinza-100:         #f1efe8;
+        --cinza-50:          #f8f7f4;
+        --branco:            #ffffff;
+        --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
     }
 
     [data-testid="stAppViewContainer"] {
-        background-color: var(--page-bg);
+        background-color: var(--cinza-100);
+        font-family: 'DM Sans', 'Segoe UI', sans-serif;
     }
 
     [data-testid="stAppViewBlockContainer"] {
@@ -41,110 +47,117 @@ THEME_CSS = """
     }
 
     h1, h2, h3 {
-        color: var(--ink-strong);
-        font-family: "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+        color: var(--cinza-800);
+        font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
         font-weight: 600;
-        letter-spacing: -0.01em;
+        letter-spacing: 0.01em;
     }
 
     [data-testid="stForm"] {
-        background: var(--panel-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
+        background: var(--cinza-50);
+        border: 1px solid var(--cinza-300);
+        border-radius: 2px;
         box-shadow: var(--shadow);
         padding: 1.5rem;
     }
 
     [data-testid="stMetric"] {
-        background: var(--panel-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
+        background: var(--cinza-50);
+        border: 1px solid var(--cinza-300);
+        border-radius: 2px;
         padding: 1rem;
         box-shadow: var(--shadow);
     }
 
     [data-testid="stMetricLabel"] {
-        color: var(--ink-soft);
-        font-size: 0.75rem;
+        color: var(--cinza-600);
+        font-size: 0.7rem;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.08em;
         font-weight: 600;
+        font-family: 'Barlow Condensed', sans-serif;
     }
 
     [data-testid="stMetricValue"] {
-        color: var(--accent-strong);
+        color: var(--verde-principal);
         font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
     }
 
     .stButton > button,
     .stDownloadButton > button,
     button[kind="primaryFormSubmit"] {
-        border-radius: 4px;
-        border: 1px solid var(--accent-strong);
-        background-color: var(--accent-strong);
-        color: #ffffff;
+        border-radius: 2px;
+        border: 1px solid var(--verde-principal);
+        background-color: var(--verde-principal);
+        color: var(--branco);
         font-weight: 500;
         padding: 0.5rem 1rem;
-        transition: all 0.2s;
+        transition: background-color 0.15s;
+        font-family: 'DM Sans', sans-serif;
     }
 
     .stButton > button:hover {
-        background-color: var(--accent);
-        border-color: var(--accent);
+        background-color: var(--verde-hover);
+        border-color: var(--verde-hover);
     }
 
     .shell-container {
-        background: var(--panel-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
+        background: var(--cinza-50);
+        border: 1px solid var(--cinza-300);
+        border-radius: 2px;
         padding: 1.25rem;
         margin-bottom: 1rem;
         box-shadow: var(--shadow);
     }
 
     .kicker {
-        color: var(--accent);
-        font-size: 0.7rem;
+        color: var(--verde-principal);
+        font-size: 0.65rem;
         font-weight: 700;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
         margin-bottom: 0.5rem;
         display: block;
+        font-family: 'Barlow Condensed', sans-serif;
     }
 
     .title-large {
         font-size: 1.75rem;
         margin-bottom: 0.5rem;
+        color: var(--cinza-800);
+        font-family: 'Barlow Condensed', sans-serif;
     }
 
     .copy-text {
-        color: var(--ink-soft);
+        color: var(--cinza-600);
         font-size: 0.95rem;
         line-height: 1.6;
     }
 
     .result-box {
-        background: var(--result-bg);
-        border-left: 4px solid var(--accent);
+        background: var(--verde-claro);
+        border-left: 4px solid var(--verde-principal);
         padding: 1rem;
         margin: 1rem 0;
-        border-radius: 0 4px 4px 0;
+        border-radius: 0 2px 2px 0;
     }
 
     .result-value {
         font-size: 1.5rem;
         font-weight: 700;
-        color: var(--accent-strong);
+        color: var(--verde-texto);
+        font-family: 'JetBrains Mono', monospace;
     }
 
     .code-block {
-        font-family: "Cascadia Code", "Consolas", monospace;
-        background: #f1f5f9;
+        font-family: 'JetBrains Mono', 'Consolas', monospace;
+        background: var(--cinza-100);
         padding: 0.75rem;
-        border-radius: 4px;
-        border: 1px solid #cbd5e1;
+        border-radius: 2px;
+        border: 1px solid var(--cinza-300);
         font-size: 0.85rem;
-        color: #334155;
+        color: var(--cinza-800);
     }
 </style>
 """
