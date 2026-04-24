@@ -2,7 +2,7 @@
 [Setup]
 AppId={{8B380ABE-A4E5-4D7E-B5FA-A3BFB9E1E615}
 AppName=Scripts Formula
-AppVersion=2.0.0
+AppVersion=2.0.2
 AppPublisher=Vitor Neuenschwander
 DefaultDirName={autopf}\Scripts Formula
 DefaultGroupName=Scripts Formula
