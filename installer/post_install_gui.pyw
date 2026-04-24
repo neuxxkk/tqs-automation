@@ -96,10 +96,10 @@ class InstallerWindow:
         self._done        = False
         self._error       = False
 
-        self.root.geometry("480x180")
+        self.root.geometry("480x500")
         self.root.resizable(False, True)
-        self.root.minsize(480, 180)
-        self.root.maxsize(480, 9999)
+        self.root.minsize(480, 500)
+        self.root.maxsize(500, 9999)
         self._build_ui()
         self.root.update_idletasks()
         self._center()
