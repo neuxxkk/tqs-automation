@@ -12,9 +12,9 @@ set "PY_ARGS="
 
 rem Tenta py launcher, mas descarta builds free-threading (python3.X t.exe / GIL desabilitado)
 where py >nul 2>nul
-if %errorlevel%==0 (
+if not errorlevel 1 (
     py -3 -c "import sys; exit(0 if getattr(sys, '_is_gil_enabled', lambda: True)() else 1)" >nul 2>nul
-    if %errorlevel%==0 (
+    if not errorlevel 1 (
         set "PY_EXE=py"
         set "PY_ARGS=-3"
     )
@@ -23,9 +23,9 @@ if %errorlevel%==0 (
 rem Se py nao serviu, tenta python.exe diretamente
 if not defined PY_EXE (
     where python >nul 2>nul
-    if %errorlevel%==0 (
+    if not errorlevel 1 (
         python -c "import sys; exit(0 if getattr(sys, '_is_gil_enabled', lambda: True)() else 1)" >nul 2>nul
-        if %errorlevel%==0 (
+        if not errorlevel 1 (
             set "PY_EXE=python"
         )
     )
@@ -34,9 +34,9 @@ if not defined PY_EXE (
 rem Ultima tentativa: python3
 if not defined PY_EXE (
     where python3 >nul 2>nul
-    if %errorlevel%==0 (
+    if not errorlevel 1 (
         python3 -c "import sys; exit(0 if getattr(sys, '_is_gil_enabled', lambda: True)() else 1)" >nul 2>nul
-        if %errorlevel%==0 (
+        if not errorlevel 1 (
             set "PY_EXE=python3"
         )
     )
@@ -58,7 +58,11 @@ call :run_python -m pip install --upgrade pip
 if errorlevel 1 goto :pip_error
 
 echo Instalando dependencias para todas as funcionalidades...
-call :run_python -m pip install --upgrade xlsxwriter pillow streamlit fpdf2 PyMuPDF
+call :run_python -m pip install --upgrade xlsxwriter pillow streamlit fpdf2
+if errorlevel 1 goto :pip_error
+
+echo Instalando PyMuPDF...
+call :run_python -m pip install --only-binary=:all: PyMuPDF
 if errorlevel 1 goto :pip_error
 
 echo Copiando scripts para o TQS...
