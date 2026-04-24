@@ -21,7 +21,7 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 
 [Files]
 Source: "..\assets\*";    DestDir: "{app}\assets";    Flags: recursesubdirs createallsubdirs ignoreversion
-Source: "..\src\*";       DestDir: "{app}\src";       Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\src\*";       DestDir: "{app}\src";       Excludes: "__pycache__\*,*\__pycache__\*,*.pyc"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\launchers\*"; DestDir: "{app}\launchers"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\audit\*";     DestDir: "{app}\audit";     Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "post_install.bat"; DestDir: "{app}\installer"; Flags: ignoreversion
