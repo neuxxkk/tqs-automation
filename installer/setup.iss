@@ -24,7 +24,8 @@ Source: "..\assets\*";    DestDir: "{app}\assets";    Flags: recursesubdirs crea
 Source: "..\src\*";       DestDir: "{app}\src";       Excludes: "__pycache__\*,*\__pycache__\*,*.pyc"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\launchers\*"; DestDir: "{app}\launchers"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\audit\*";     DestDir: "{app}\audit";     Flags: recursesubdirs createallsubdirs ignoreversion
-Source: "post_install.bat"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "post_install.bat";     DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "post_install_gui.pyw"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "..\version.txt"; DestDir: "{app}";           Flags: ignoreversion
 
 [Icons]
