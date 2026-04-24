@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$issPath = Join-Path $PSScriptRoot 'ScriptsFormula.iss'
+$issPath = Join-Path $PSScriptRoot 'setup.iss'
 
 $innoCandidates = @(
     'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',

@@ -37,11 +37,11 @@ call :run_python -m pip install --upgrade pip
 if errorlevel 1 goto :pip_error
 
 echo Instalando dependencias para todas as funcionalidades...
-call :run_python -m pip install --upgrade xlsxwriter pillow streamlit fpdf2
+call :run_python -m pip install --upgrade xlsxwriter pillow streamlit fpdf2 PyMuPDF
 if errorlevel 1 goto :pip_error
 
 echo Copiando scripts para o TQS...
-call :run_python "%APP_ROOT%\codigo_fonte\instalar_arquivos_tqs.py"
+call :run_python "%APP_ROOT%\src\install_tqs_files.py"
 if errorlevel 1 goto :copy_error
 
 echo.
