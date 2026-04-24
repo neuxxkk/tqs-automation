@@ -202,7 +202,7 @@ class ScriptLauncherApp(tk.Tk):
         upd_btn.bind("<Button-1>", lambda _e: self._run_updater())
 
         link_btn = tk.Label(
-            sidebar, text="Sistema de Atividades  →",
+            sidebar, text="",
             font=("Segoe UI", 9, "underline"), bg=_C900, fg=_C600,
             cursor="hand2", pady=10, padx=16,
         )
