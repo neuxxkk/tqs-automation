@@ -379,13 +379,25 @@ class ScriptLauncherApp(tk.Tk):
     def _show_about(self, title: str, description: str) -> None:
         AboutDialog(self, title, description)
 
-    def _python_command(self) -> list[str]:
+    def _python_command(self, prefer_console: bool = False) -> list[str]:
+        def console_pair(executable: Path) -> Path | None:
+            if executable.name.lower() != "pythonw.exe":
+                return None
+            python_exe = executable.with_name("python.exe")
+            return python_exe if python_exe.exists() else None
+
         if not getattr(sys, "frozen", False):
+            if prefer_console:
+                console_exe = console_pair(Path(sys.executable).resolve())
+                if console_exe:
+                    return [str(console_exe)]
             return [sys.executable]
 
         app_dir = Path(sys.executable).resolve().parent
         local_pythonw = app_dir / "pythonw.exe"
         local_python = app_dir / "python.exe"
+        if prefer_console and local_python.exists():
+            return [str(local_python)]
         if local_pythonw.exists():
             return [str(local_pythonw)]
         if local_python.exists():
@@ -459,6 +471,8 @@ class ScriptLauncherApp(tk.Tk):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=creation_flags,
             startupinfo=startup_info,
         )
@@ -517,7 +531,7 @@ class ScriptLauncherApp(tk.Tk):
         self._run_python_script("detalhes_viga.py")
 
     def _run_calc_beiral(self) -> None:
-        python_cmd = self._python_command()
+        python_cmd = self._python_command(prefer_console=True)
         if not python_cmd:
             return
 

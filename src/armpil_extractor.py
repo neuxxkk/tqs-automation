@@ -12,7 +12,7 @@ Uso:
 """
 
 import fitz          # PyMuPDF
-import re, math, csv, sys, os, traceback
+import re, math, csv, sys, os, traceback, tempfile, unicodedata
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
@@ -61,6 +61,29 @@ def emit_result_line(line: str) -> None:
         return
     Path(result_file).write_text(f"{line}\n", encoding="utf-8")
 
+def ascii_slug(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", ascii_text).strip("._")
+    return safe or "armpil"
+
+def resolve_output_csv(pdf_path: Path) -> Path:
+    if not os.environ.get("ARMPIL_RESULT_FILE", "").strip():
+        return pdf_path.with_name(f"{pdf_path.stem}_script.csv")
+
+    configured_dir = os.environ.get("ARMPIL_OUTPUT_DIR", "").strip()
+    if configured_dir:
+        output_dir = Path(configured_dir)
+    else:
+        public_dir = os.environ.get("PUBLIC", "").strip()
+        if public_dir:
+            output_dir = Path(public_dir) / "Documents" / "Scripts Formula" / "ARMPIL"
+        else:
+            output_dir = Path(tempfile.gettempdir()) / "ScriptsFormula" / "ARMPIL"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / f"{ascii_slug(pdf_path.stem)}_script.csv"
+
 def choose_paths(discover: bool) -> tuple[Path, Path | None]:
     root = tk.Tk()
     root.withdraw()
@@ -75,7 +98,7 @@ def choose_paths(discover: bool) -> tuple[Path, Path | None]:
             sys.exit("[CANCELADO] Nenhum PDF selecionado.")
 
         pdf_path = Path(pdf_name)
-        out_csv = pdf_path.with_name(f"{pdf_path.stem}_script.csv")
+        out_csv = resolve_output_csv(pdf_path)
         if discover:
             return pdf_path, out_csv
 

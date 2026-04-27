@@ -555,7 +555,7 @@ Private Function RunPythonArmpilExtractor() As String
         Err.Raise vbObjectError + 2002, , "O script Python terminou sem informar o CSV gerado."
     End If
 
-    If Dir$(RunPythonArmpilExtractor) = "" Then
+    If Not FileExists(RunPythonArmpilExtractor) Then
         Err.Raise vbObjectError + 2003, , "CSV gerado não encontrado:" & vbCrLf & RunPythonArmpilExtractor
     End If
 
@@ -649,6 +649,7 @@ Private Function BuildPythonLauncherScript(ByVal exeName As String, ByVal exeArg
     lines = "@echo off" & vbCrLf
     lines = lines & "setlocal" & vbCrLf
     lines = lines & "set ""ARMPIL_RESULT_FILE=" & resultFile & """" & vbCrLf
+    lines = lines & "set ""ARMPIL_OUTPUT_DIR=" & GetArmpilOutputDir() & """" & vbCrLf
     lines = lines & BuildExecutableCommand(exeName, exeArgs) & " " & QuotePath(scriptPath) & vbCrLf
     lines = lines & "exit /b %errorlevel%" & vbCrLf
 
@@ -659,10 +660,22 @@ Private Function BuildPythonCheckScript(ByVal exeName As String, ByVal exeArgs A
     Dim lines As String
 
     lines = "@echo off" & vbCrLf
-    lines = BuildExecutableCommand(exeName, exeArgs) & " -c ""import fitz""" & vbCrLf
-    lines = "exit /b %errorlevel%" & vbCrLf
+    lines = lines & BuildExecutableCommand(exeName, exeArgs) & " -c ""import sys, fitz; exit(0 if getattr(sys, '_is_gil_enabled', lambda: True)() else 1)""" & vbCrLf
+    lines = lines & "exit /b %errorlevel%" & vbCrLf
 
     BuildPythonCheckScript = lines
+End Function
+
+Private Function GetArmpilOutputDir() As String
+    Dim publicDir As String
+    publicDir = Environ$("PUBLIC")
+
+    If publicDir <> "" Then
+        GetArmpilOutputDir = publicDir & Application.PathSeparator & "Documents" & _
+            Application.PathSeparator & "Scripts Formula" & Application.PathSeparator & "ARMPIL"
+    Else
+        GetArmpilOutputDir = Environ$("TEMP")
+    End If
 End Function
 
 Private Function ExtractTaggedValue(ByVal text As String, ByVal tag As String) As String
@@ -697,6 +710,15 @@ Private Function ReadTextFileSafe(ByVal path As String) As String
     Open path For Input As #ff
     ReadTextFileSafe = Input$(LOF(ff), #ff)
     Close #ff
+End Function
+
+Private Function FileExists(ByVal path As String) As Boolean
+    On Error GoTo Fallback
+    FileExists = CreateObject("Scripting.FileSystemObject").FileExists(path)
+    Exit Function
+
+Fallback:
+    FileExists = (Dir$(path) <> "")
 End Function
 
 Private Sub WriteTextFile(ByVal path As String, ByVal content As String)
