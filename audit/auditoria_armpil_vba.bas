@@ -94,6 +94,25 @@ TrataErro:
     MsgBox "Erro na comparacao: " & Err.Description, vbExclamation
 End Sub
 
+Public Sub Limpar_Todas_As_Tabelas()
+    On Error GoTo TrataErro
+
+    If MsgBox( _
+        "Limpar todos os dados das abas ARMPIL, SELE e RESULTADO?", _
+        vbQuestion + vbYesNo + vbDefaultButton2, _
+        "Limpar tabelas" _
+    ) <> vbYes Then
+        Exit Sub
+    End If
+
+    ClearAllTables
+    MsgBox "Tabelas limpas com sucesso.", vbInformation
+    Exit Sub
+
+TrataErro:
+    MsgBox "Erro ao limpar tabelas: " & Err.Description, vbExclamation
+End Sub
+
 ' ================================================================
 ' CARREGA ARMPIL - OTIMIZADO
 ' Mantém As Total e Chave como fórmulas na planilha
@@ -915,6 +934,56 @@ Private Sub ClearSELE(ByVal ws As Worksheet)
         ws.Range(ws.Cells(6, 2), ws.Cells(lr, 5)).ClearContents
         ws.Range(ws.Cells(6, 2), ws.Cells(lr, 5)).Interior.Color = RGB(250, 251, 252)
         ws.Range(ws.Cells(6, 2), ws.Cells(lr, 5)).Font.Color = RGB(44, 62, 80)
+    End If
+End Sub
+
+Private Sub ClearAllTables()
+    Dim oldCalc As XlCalculation
+    Dim oldScreen As Boolean
+    Dim oldEvents As Boolean
+    Dim oldStatusBar As Variant
+
+    oldCalc = Application.Calculation
+    oldScreen = Application.ScreenUpdating
+    oldEvents = Application.EnableEvents
+    oldStatusBar = Application.StatusBar
+
+    On Error GoTo Cleanup
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+    Application.StatusBar = "Limpando tabelas..."
+
+    Dim wsArm As Worksheet
+    Dim wsSel As Worksheet
+    Dim wsRes As Worksheet
+
+    Set wsArm = ThisWorkbook.Sheets("ARMPIL")
+    Set wsSel = ThisWorkbook.Sheets("SELE")
+    Set wsRes = ThisWorkbook.Sheets("RESULTADO")
+
+    Dim lastRes As Long
+    lastRes = wsRes.Cells(wsRes.Rows.count, 2).End(xlUp).Row
+    If lastRes >= 9 Then
+        wsRes.Range(wsRes.Cells(9, 2), wsRes.Cells(lastRes, 10)).FormatConditions.Delete
+    End If
+
+    ClearARMPIL wsArm
+    ClearSELE wsSel
+    ClearResultsPermanent wsRes
+
+    wsArm.Cells(4, 2).Value = "  Nenhum ARMPIL carregado."
+    wsSel.Cells(4, 2).Value = "  Nenhum SELE carregado."
+
+Cleanup:
+    Application.StatusBar = oldStatusBar
+    Application.Calculation = oldCalc
+    Application.ScreenUpdating = oldScreen
+    Application.EnableEvents = oldEvents
+
+    If Err.Number <> 0 Then
+        Err.Raise Err.Number, , Err.Description
     End If
 End Sub
 
