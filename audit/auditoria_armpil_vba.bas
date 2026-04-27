@@ -489,16 +489,16 @@ Private Sub CompareAndMark()
 
         If lastArm >= 6 Then
             .Range(.Cells(firstResRow, 5), .Cells(lastResRow, 5)).FormulaR1C1 = _
-                "=IFERROR(XLOOKUP(RC4,'ARMPIL'!R6C7:R" & lastArm & "C7,'ARMPIL'!R6C4:R" & lastArm & "C4),"""")"
+                "=IFERROR(INDEX(ARMPIL!R6C4:R" & lastArm & "C4,MATCH(RC4,ARMPIL!R6C7:R" & lastArm & "C7,0)),"""")"
             .Range(.Cells(firstResRow, 6), .Cells(lastResRow, 6)).FormulaR1C1 = _
-                "=IFERROR(XLOOKUP(RC4,'ARMPIL'!R6C7:R" & lastArm & "C7,'ARMPIL'!R6C5:R" & lastArm & "C5),"""")"
+                "=IFERROR(INDEX(ARMPIL!R6C5:R" & lastArm & "C5,MATCH(RC4,ARMPIL!R6C7:R" & lastArm & "C7,0)),"""")"
             .Range(.Cells(firstResRow, 7), .Cells(lastResRow, 7)).FormulaR1C1 = _
-                "=IFERROR(XLOOKUP(RC4,'ARMPIL'!R6C7:R" & lastArm & "C7,'ARMPIL'!R6C6:R" & lastArm & "C6),"""")"
+                "=IFERROR(INDEX(ARMPIL!R6C6:R" & lastArm & "C6,MATCH(RC4,ARMPIL!R6C7:R" & lastArm & "C7,0)),"""")"
         End If
 
         If lastSel >= 6 Then
             .Range(.Cells(firstResRow, 8), .Cells(lastResRow, 8)).FormulaR1C1 = _
-                "=IFERROR(XLOOKUP(RC4,'SELE'!R6C5:R" & lastSel & "C5,'SELE'!R6C4:R" & lastSel & "C4),"""")"
+                "=IFERROR(INDEX(SELE!R6C4:R" & lastSel & "C4,MATCH(RC4,SELE!R6C5:R" & lastSel & "C5,0)),"""")"
         End If
 
         .Range(.Cells(firstResRow, 9), .Cells(lastResRow, 9)).FormulaR1C1 = _
@@ -1036,18 +1036,73 @@ Private Sub ClearResultsPermanent(ByVal ws As Worksheet)
     Dim lr As Long
     lr = ws.Cells(ws.Rows.count, 2).End(xlUp).Row
 
+    PrepararCabecalhoResultado ws
+
     If lr >= 9 Then
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).ClearContents
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Interior.Color = RGB(247, 248, 252)
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Font.Color = RGB(44, 62, 80)
     End If
 
-    ws.Cells(6, 2).value = "--"
-    ws.Cells(6, 3).value = "--"
-    ws.Cells(6, 4).value = "--"
-    ws.Cells(6, 5).value = "--"
-    ws.Cells(6, 6).value = "--"
-    ws.Cells(6, 7).value = "--"
+    ws.Range(ws.Cells(6, 2), ws.Cells(6, 7)).Value = "--"
+End Sub
+
+Private Sub PrepararCabecalhoResultado(ByVal ws As Worksheet)
+    With ws.Range("B1:J7")
+        .UnMerge
+        .ClearContents
+        .Interior.Pattern = xlNone
+        .Borders.LineStyle = xlNone
+        .Font.Name = "Segoe UI"
+        .Font.Color = RGB(30, 30, 28)
+    End With
+
+    With ws.Range("B1:J1")
+        .Merge
+        .Value = "AUDITORIA DE ARMADURA - ARMPIL x SELE"
+        .Interior.Color = RGB(30, 30, 28)
+        .Font.Color = RGB(255, 255, 255)
+        .Font.Bold = True
+        .Font.Size = 13
+        .HorizontalAlignment = xlLeft
+        .VerticalAlignment = xlCenter
+    End With
+
+    With ws.Range("B2:J2")
+        .Merge
+        .Value = "Compara As projetada no ARMPIL com As minima do SELE. Vermelho = nao atende o minimo."
+        .Font.Italic = True
+        .Font.Size = 9
+        .Font.Color = RGB(90, 90, 90)
+        .HorizontalAlignment = xlLeft
+        .VerticalAlignment = xlCenter
+    End With
+
+    ws.Range("B5:G5").Value = Array("PILARES", "LANCES", "APROVADOS", "MARGEM 15%", "REPROVADOS", "SEM MATCH")
+
+    With ws.Range("B5:G5")
+        .Interior.Color = RGB(234, 243, 222)
+        .Font.Bold = True
+        .Font.Size = 9
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous
+        .Borders.Color = RGB(180, 178, 169)
+    End With
+
+    With ws.Range("B6:G6")
+        .Interior.Color = RGB(248, 247, 244)
+        .Font.Bold = True
+        .Font.Size = 11
+        .Font.Color = RGB(59, 109, 17)
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous
+        .Borders.Color = RGB(180, 178, 169)
+    End With
+
+    ws.Rows("1:7").RowHeight = 20
+    ws.Rows(1).RowHeight = 28
 End Sub
 
 Private Sub FormatResultadoRange(ByVal ws As Worksheet, ByVal rowStart As Long, ByVal rowEnd As Long)
@@ -1078,9 +1133,9 @@ Private Sub AtualizarResumoResultado(ByVal ws As Worksheet, ByVal lastRow As Lon
     ws.Cells(6, 2).FormulaLocal = "=SOMARPRODUTO((B9:B" & lastRow & "<>"""")/CONT.SE(B9:B" & lastRow & ";B9:B" & lastRow & "&""""))"
     ws.Cells(6, 3).FormulaLocal = "=CONT.VALORES(B9:B" & lastRow & ")"
     ws.Cells(6, 4).FormulaLocal = "=CONT.SE(J9:J" & lastRow & ";""APROVADO"")"
-    ws.Cells(6, 5).FormulaLocal = "=CONT.SE(J9:J" & lastRow & ";""REPROVADO"")"
-    ws.Cells(6, 6).FormulaLocal = "=CONT.SE(J9:J" & lastRow & ";""SEM MATCH"")"
-    ws.Cells(6, 7).FormulaLocal = "=CONT.SE(J9:J" & lastRow & ";""MARGEM 15%"")"
+    ws.Cells(6, 5).FormulaLocal = "=CONT.SE(J9:J" & lastRow & ";""MARGEM 15%"")"
+    ws.Cells(6, 6).FormulaLocal = "=CONT.SE(J9:J" & lastRow & ";""REPROVADO"")"
+    ws.Cells(6, 7).FormulaLocal = "=CONT.SE(J9:J" & lastRow & ";""SEM MATCH"")"
 End Sub
 
 Private Sub ConfigurarFormatacaoCondicionalResultado(ByVal ws As Worksheet, ByVal lastRow As Long)

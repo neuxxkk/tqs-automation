@@ -2,13 +2,15 @@
 [Setup]
 AppId={{8B380ABE-A4E5-4D7E-B5FA-A3BFB9E1E615}
 AppName=Scripts Formula
-AppVersion=2.0.2
+AppVersion=2.1.0
 AppPublisher=Vitor Neuenschwander
 DefaultDirName={autopf}\Scripts Formula
 DefaultGroupName=Scripts Formula
 DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=Scripts-Formula-Setup
+SetupIconFile=..\assets\imgs\engenharia_formula_logo.ico
+UninstallDisplayIcon={app}\assets\imgs\engenharia_formula_logo.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

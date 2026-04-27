@@ -11,7 +11,6 @@ from beiral.core import (
     validar_entrada,
 )
 from beiral.draw import draw_beiral_svg_from_result
-from beiral.pdf import gerar_pdf_relatorio, pdf_disponivel
 
 
 DEFAULT_PROJECT_NAME = "16a Laje - ANIMA MAJOR"
@@ -19,8 +18,6 @@ SESSION_INPUT_KEY = "beiral_entrada"
 SESSION_RESULT_KEY = "beiral_resultado"
 THEME_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
-
     :root {
         --verde-principal:   #5a8a4a;
         --verde-hover:       #3b6d11;
@@ -38,7 +35,7 @@ THEME_CSS = """
 
     [data-testid="stAppViewContainer"] {
         background-color: var(--cinza-100);
-        font-family: 'DM Sans', 'Segoe UI', sans-serif;
+        font-family: 'Segoe UI', Arial, sans-serif;
     }
 
     [data-testid="stAppViewBlockContainer"] {
@@ -48,7 +45,7 @@ THEME_CSS = """
 
     h1, h2, h3 {
         color: var(--cinza-800);
-        font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+        font-family: 'Segoe UI Semibold', 'Segoe UI', Arial, sans-serif;
         font-weight: 600;
         letter-spacing: 0.01em;
     }
@@ -75,13 +72,13 @@ THEME_CSS = """
         text-transform: uppercase;
         letter-spacing: 0.08em;
         font-weight: 600;
-        font-family: 'Barlow Condensed', sans-serif;
+        font-family: 'Segoe UI Semibold', 'Segoe UI', Arial, sans-serif;
     }
 
     [data-testid="stMetricValue"] {
         color: var(--verde-principal);
         font-weight: 700;
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Consolas', monospace;
     }
 
     .stButton > button,
@@ -94,7 +91,7 @@ THEME_CSS = """
         font-weight: 500;
         padding: 0.5rem 1rem;
         transition: background-color 0.15s;
-        font-family: 'DM Sans', sans-serif;
+        font-family: 'Segoe UI', Arial, sans-serif;
     }
 
     .stButton > button:hover {
@@ -119,14 +116,14 @@ THEME_CSS = """
         text-transform: uppercase;
         margin-bottom: 0.5rem;
         display: block;
-        font-family: 'Barlow Condensed', sans-serif;
+        font-family: 'Segoe UI Semibold', 'Segoe UI', Arial, sans-serif;
     }
 
     .title-large {
         font-size: 1.75rem;
         margin-bottom: 0.5rem;
         color: var(--cinza-800);
-        font-family: 'Barlow Condensed', sans-serif;
+        font-family: 'Segoe UI Semibold', 'Segoe UI', Arial, sans-serif;
     }
 
     .copy-text {
@@ -147,11 +144,11 @@ THEME_CSS = """
         font-size: 1.5rem;
         font-weight: 700;
         color: var(--verde-texto);
-        font-family: 'JetBrains Mono', monospace;
+        font-family: 'Consolas', monospace;
     }
 
     .code-block {
-        font-family: 'JetBrains Mono', 'Consolas', monospace;
+        font-family: 'Consolas', monospace;
         background: var(--cinza-100);
         padding: 0.75rem;
         border-radius: 2px;
@@ -397,6 +394,8 @@ def _render_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> Non
     st.session_state[SESSION_INPUT_KEY] = entrada
 
     st.divider()
+    from beiral.pdf import gerar_pdf_relatorio, pdf_disponivel
+
     if pdf_disponivel():
         pdf_bytes = gerar_pdf_relatorio(entrada, resultado)
         file_name = sanitize_filename_component(entrada.nome_projeto)

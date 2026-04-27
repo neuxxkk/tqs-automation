@@ -2,15 +2,30 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 import tkinter as tk
+import urllib.error
+import urllib.request
 import webbrowser
+import ctypes
 from pathlib import Path
 from tkinter import messagebox
 from tkinter import ttk
+from typing import Callable
+
+try:
+    import winreg
+except ImportError:
+    winreg = None
 
 
 BASE_DIR = Path(__file__).resolve().parent
 ACTIVITIES_URL = os.getenv("SISTEMA_ATIVIDADES_URL", "")
+BEIRAL_STREAMLIT_PORT = 8507
+BEIRAL_STREAMLIT_URL = f"http://localhost:{BEIRAL_STREAMLIT_PORT}"
+APP_USER_MODEL_ID = "FormulaEngenharia.ScriptsFormula"
+APP_ICON_RELATIVE_PATH = Path("assets") / "imgs" / "engenharia_formula_logo.ico"
 
 # Paleta Formula Engenharia
 _C900 = "#1e1e1c"   # sidebar / header escuro
@@ -43,6 +58,47 @@ _ABOUT_TEXTS = {
         "verificação estrutural."
     ),
 }
+
+
+def _candidate_app_roots() -> list[Path]:
+    roots: list[Path] = []
+
+    def add_root(path: Path) -> None:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved not in roots:
+            roots.append(resolved)
+
+    app_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else BASE_DIR
+    add_root(app_dir)
+    add_root(app_dir.parent)
+    add_root(BASE_DIR)
+    add_root(BASE_DIR.parent)
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        add_root(Path(meipass))
+
+    return roots
+
+
+def _resolve_app_icon() -> Path | None:
+    for root in _candidate_app_roots():
+        candidate = root / APP_ICON_RELATIVE_PATH
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _set_windows_app_id() -> None:
+    if os.name != "nt":
+        return
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except Exception:
+        pass
 
 
 class AboutDialog(tk.Toplevel):
@@ -99,17 +155,193 @@ class AboutDialog(tk.Toplevel):
         self.geometry(f"{w}x{h}+{px}+{py}")
 
 
+class LoadingDialog(tk.Toplevel):
+    def __init__(self, parent: tk.Tk, title: str, message: str) -> None:
+        super().__init__(parent)
+        self.title(title)
+        self.configure(bg=_C100)
+        self.resizable(False, False)
+        self.transient(parent)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        body = tk.Frame(self, bg=_C100, padx=24, pady=22)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(
+            body,
+            text=title,
+            font=("Segoe UI Semibold", 12),
+            bg=_C100,
+            fg=_C800,
+        ).pack(anchor="w")
+        tk.Label(
+            body,
+            text=message,
+            font=("Segoe UI", 9),
+            bg=_C100,
+            fg=_C600,
+            wraplength=360,
+            justify="left",
+        ).pack(anchor="w", pady=(6, 14))
+
+        self._progress = ttk.Progressbar(body, mode="indeterminate", length=360)
+        self._progress.pack(fill="x")
+        self._progress.start(12)
+
+        self.update_idletasks()
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        px = parent.winfo_x() + (parent.winfo_width() - w) // 2
+        py = parent.winfo_y() + (parent.winfo_height() - h) // 2
+        self.geometry(f"{w}x{h}+{px}+{py}")
+        self.lift(parent)
+        self.grab_set()
+
+    def close(self) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        try:
+            self._progress.stop()
+        except tk.TclError:
+            pass
+        if self.winfo_exists():
+            self.destroy()
+
+
+class MacroTutorialDialog(tk.Toplevel):
+    def __init__(self, parent: tk.Tk, status_text: str, open_excel_options: Callable[[], None]) -> None:
+        super().__init__(parent)
+        self.title("Macros do Excel")
+        self.configure(bg=_C100)
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+
+        header = tk.Frame(self, bg=_C900, pady=14, padx=20)
+        header.pack(fill="x")
+        tk.Label(
+            header,
+            text="Macros nao habilitadas",
+            font=("Segoe UI Semibold", 13),
+            bg=_C900,
+            fg=_BRANCO,
+        ).pack(anchor="w")
+
+        body = tk.Frame(self, bg=_C100, padx=24, pady=20)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(
+            body,
+            text=(
+                "A Auditoria ARMPIL depende das macros do Excel para funcionar corretamente.\n"
+                f"Status detectado: {status_text}"
+            ),
+            font=("Segoe UI", 10),
+            bg=_C100,
+            fg=_C800,
+            wraplength=500,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 12))
+
+        steps_frame = tk.Frame(body, bg=_C50, padx=14, pady=12)
+        steps_frame.pack(fill="x")
+
+        steps = [
+            "1. Abra o Excel.",
+            "2. Acesse Arquivo > Opcoes > Central de Confiabilidade.",
+            "3. Clique em Configuracoes da Central de Confiabilidade.",
+            "4. Entre em Configuracoes de Macro.",
+            "5. Selecione Habilitar macros VBA ou adicione esta pasta como Local Confiavel.",
+            "6. Feche o Excel e clique novamente em Auditoria ARMPIL.",
+        ]
+        for step in steps:
+            tk.Label(
+                steps_frame,
+                text=step,
+                font=("Segoe UI", 9),
+                bg=_C50,
+                fg=_C800,
+                wraplength=470,
+                justify="left",
+            ).pack(anchor="w", pady=2)
+
+        tk.Label(
+            body,
+            text=(
+                "Se as opcoes estiverem bloqueadas, a configuracao pode estar controlada "
+                "pela politica de TI do computador."
+            ),
+            font=("Segoe UI", 9),
+            bg=_C100,
+            fg=_C600,
+            wraplength=500,
+            justify="left",
+        ).pack(anchor="w", pady=(12, 0))
+
+        actions = tk.Frame(body, bg=_C100)
+        actions.pack(fill="x", pady=(18, 0))
+
+        tk.Button(
+            actions,
+            text="Fechar",
+            font=("Segoe UI", 10),
+            bg=_C50,
+            fg=_C800,
+            activebackground=_C100,
+            activeforeground=_C900,
+            relief="flat",
+            padx=16,
+            pady=7,
+            cursor="hand2",
+            bd=0,
+            command=self.destroy,
+        ).pack(side="right", padx=(8, 0))
+
+        tk.Button(
+            actions,
+            text="Abrir Excel",
+            font=("Segoe UI", 10, "bold"),
+            bg=_VERDE,
+            fg=_BRANCO,
+            activebackground=_VERDE_H,
+            activeforeground=_BRANCO,
+            relief="flat",
+            padx=16,
+            pady=7,
+            cursor="hand2",
+            bd=0,
+            command=open_excel_options,
+        ).pack(side="right")
+
+        self.update_idletasks()
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        px = parent.winfo_x() + (parent.winfo_width() - w) // 2
+        py = parent.winfo_y() + (parent.winfo_height() - h) // 2
+        self.geometry(f"{w}x{h}+{px}+{py}")
+
+
 class ScriptLauncherApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Automações Fórmula Engenharia")
-        self.geometry("820x640")
-        self.minsize(660, 500)
+        self.geometry("820x760")
+        self.minsize(660, 620)
         self.configure(bg=_C100)
+        self._set_window_icon()
 
         self._running_processes: list[subprocess.Popen] = []
         self._configure_styles()
         self._build_ui()
+
+    def _set_window_icon(self) -> None:
+        icon_path = _resolve_app_icon()
+        if not icon_path:
+            return
+        try:
+            self.iconbitmap(str(icon_path))
+        except tk.TclError:
+            pass
 
     def _configure_styles(self) -> None:
         style = ttk.Style(self)
@@ -456,20 +688,45 @@ class ScriptLauncherApp(tk.Tk):
                 return candidate
         return None
 
-    def _run_silent_process(self, command: list[str], cwd: Path, label: str) -> None:
+    def _run_silent_process(
+        self,
+        command: list[str],
+        cwd: Path,
+        label: str,
+        capture_log: bool = False,
+        on_started: Callable[[], None] | None = None,
+        on_failed: Callable[[], None] | None = None,
+    ) -> subprocess.Popen:
         creation_flags = 0
         startup_info = None
+        log_path: Path | None = None
+        log_handle = None
 
         if os.name == "nt":
             creation_flags = subprocess.CREATE_NO_WINDOW
             startup_info = subprocess.STARTUPINFO()
             startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
+        stdout_target = subprocess.DEVNULL
+        stderr_target = subprocess.PIPE
+
+        if capture_log:
+            log_dir = Path(tempfile.gettempdir()) / "ScriptsFormula"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            safe_label = "".join(ch if ch.isalnum() else "_" for ch in label).strip("_") or "processo"
+            log_path = log_dir / f"{safe_label}_startup.log"
+            log_handle = open(log_path, "w", encoding="utf-8", errors="replace")
+            log_handle.write(f"Comando: {' '.join(command)}\n")
+            log_handle.write(f"Pasta: {cwd}\n\n")
+            log_handle.flush()
+            stdout_target = log_handle
+            stderr_target = subprocess.STDOUT
+
         process = subprocess.Popen(
             command,
             cwd=str(cwd),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stdout=stdout_target,
+            stderr=stderr_target,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -477,23 +734,50 @@ class ScriptLauncherApp(tk.Tk):
             startupinfo=startup_info,
         )
 
-        self._running_processes.append(process)
-        self.after(1800, lambda: self._report_quick_failure(process, label, command))
+        if log_handle:
+            log_handle.close()
 
-    def _report_quick_failure(self, process: subprocess.Popen, label: str, command: list[str]) -> None:
+        self._running_processes.append(process)
+        self.after(1800, lambda: self._report_quick_failure(process, label, command, log_path, on_started, on_failed))
+        return process
+
+    def _report_quick_failure(
+        self,
+        process: subprocess.Popen,
+        label: str,
+        command: list[str],
+        log_path: Path | None = None,
+        on_started: Callable[[], None] | None = None,
+        on_failed: Callable[[], None] | None = None,
+    ) -> None:
         return_code = process.poll()
         if return_code is None:
+            if on_started:
+                on_started()
             return
 
         if return_code == 0:
+            if on_started:
+                on_started()
             return
 
+        if on_failed:
+            on_failed()
+
         stderr_text = ""
-        if process.stderr:
+        if log_path:
+            try:
+                stderr_text = log_path.read_text(encoding="utf-8", errors="replace").strip()
+            except Exception:
+                stderr_text = ""
+        elif process.stderr:
             stderr_text = process.stderr.read().strip()
 
         if not stderr_text:
             stderr_text = "Erro sem detalhes no stderr."
+
+        if log_path:
+            stderr_text = f"{stderr_text}\n\nLog completo:\n{log_path}"
 
         cmd_txt = " ".join(command)
         messagebox.showerror(
@@ -530,7 +814,43 @@ class ScriptLauncherApp(tk.Tk):
     def _run_detalhes_viga(self) -> None:
         self._run_python_script("detalhes_viga.py")
 
+    def _streamlit_is_ready(self, url: str) -> bool:
+        for endpoint in ("/_stcore/health", "/healthz"):
+            try:
+                with urllib.request.urlopen(f"{url}{endpoint}", timeout=0.2) as response:
+                    if response.status == 200:
+                        return True
+            except (OSError, urllib.error.URLError):
+                continue
+        return False
+
+    def _wait_for_streamlit(
+        self,
+        process: subprocess.Popen,
+        loading: LoadingDialog,
+        url: str,
+        deadline: float,
+    ) -> None:
+        if self._streamlit_is_ready(url):
+            loading.close()
+            webbrowser.open_new_tab(url)
+            return
+
+        if process.poll() is not None:
+            return
+
+        if time.monotonic() >= deadline:
+            loading.close()
+            webbrowser.open_new_tab(url)
+            return
+
+        self.after(300, lambda: self._wait_for_streamlit(process, loading, url, deadline))
+
     def _run_calc_beiral(self) -> None:
+        if self._streamlit_is_ready(BEIRAL_STREAMLIT_URL):
+            webbrowser.open_new_tab(BEIRAL_STREAMLIT_URL)
+            return
+
         python_cmd = self._python_command(prefer_console=True)
         if not python_cmd:
             return
@@ -551,12 +871,153 @@ class ScriptLauncherApp(tk.Tk):
             str(script_path),
             "--browser.gatherUsageStats",
             "false",
+            "--server.fileWatcherType",
+            "none",
+            "--server.showEmailPrompt",
+            "false",
+            "--server.headless",
+            "true",
+            "--server.address",
+            "localhost",
+            "--server.port",
+            str(BEIRAL_STREAMLIT_PORT),
+            "--logger.level",
+            "error",
         ]
 
+        loading = LoadingDialog(
+            self,
+            "Abrindo Calculo de Beiral",
+            "Iniciando a interface web. Assim que o servidor responder, o navegador sera aberto.",
+        )
+
         try:
-            self._run_silent_process(command, script_path.parent, "calc_beiral.py")
+            process = self._run_silent_process(
+                command,
+                script_path.parent,
+                "calc_beiral.py",
+                capture_log=True,
+                on_failed=loading.close,
+            )
+            self._wait_for_streamlit(process, loading, BEIRAL_STREAMLIT_URL, time.monotonic() + 30)
         except Exception as exc:
+            loading.close()
             messagebox.showerror("Erro ao executar", f"Falha ao abrir calc_beiral.py:\n{exc}")
+
+    def _read_registry_dword(self, root, subkey: str, value_name: str) -> int | None:
+        if winreg is None:
+            return None
+
+        access_modes = [winreg.KEY_READ]
+        if hasattr(winreg, "KEY_WOW64_64KEY"):
+            access_modes.insert(0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+        if hasattr(winreg, "KEY_WOW64_32KEY"):
+            access_modes.insert(1, winreg.KEY_READ | winreg.KEY_WOW64_32KEY)
+
+        for access in access_modes:
+            try:
+                with winreg.OpenKey(root, subkey, 0, access) as key:
+                    value, _value_type = winreg.QueryValueEx(key, value_name)
+                    return int(value)
+            except (FileNotFoundError, OSError, PermissionError, TypeError, ValueError):
+                continue
+        return None
+
+    def _excel_macro_status(self) -> tuple[bool, str]:
+        if os.name != "nt" or winreg is None:
+            return False, "nao foi possivel verificar automaticamente neste sistema."
+
+        versions = ("16.0", "15.0", "14.0", "12.0")
+        labels = {
+            1: "macros VBA habilitadas no Excel.",
+            2: "macros desabilitadas com notificacao.",
+            3: "somente macros assinadas digitalmente estao habilitadas.",
+            4: "macros desabilitadas sem notificacao.",
+        }
+
+        checks = []
+        for version in versions:
+            checks.append(
+                (
+                    winreg.HKEY_CURRENT_USER,
+                    fr"Software\Policies\Microsoft\Office\{version}\Excel\Security",
+                    f"Excel {version} por politica",
+                )
+            )
+            checks.append(
+                (
+                    winreg.HKEY_LOCAL_MACHINE,
+                    fr"Software\Policies\Microsoft\Office\{version}\Excel\Security",
+                    f"Excel {version} por politica da maquina",
+                )
+            )
+            checks.append(
+                (
+                    winreg.HKEY_CURRENT_USER,
+                    fr"Software\Microsoft\Office\{version}\Excel\Security",
+                    f"Excel {version}",
+                )
+            )
+
+        for root, subkey, source in checks:
+            value = self._read_registry_dword(root, subkey, "VBAWarnings")
+            if value is None:
+                continue
+
+            detail = labels.get(value, f"configuracao VBAWarnings={value}.")
+            return value == 1, f"{source}: {detail}"
+
+        return False, "nao encontrei a configuracao de macros do Excel no registro."
+
+    def _open_excel_options(self) -> None:
+        if os.name != "nt":
+            messagebox.showinfo(
+                "Abrir Excel",
+                "Abra o Excel manualmente e siga o passo a passo desta janela.",
+            )
+            return
+
+        script = (
+            "$excel = $null; "
+            "try { $excel = [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application') } catch { "
+            "try { $excel = New-Object -ComObject Excel.Application } catch { Start-Process excel; exit 0 } "
+            "}; "
+            "$excel.Visible = $true; "
+            "try { $excel.CommandBars.ExecuteMso('ApplicationOptionsDialog') } catch { }"
+        )
+        command = [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ]
+
+        creation_flags = 0
+        startup_info = None
+        if os.name == "nt":
+            creation_flags = subprocess.CREATE_NO_WINDOW
+            startup_info = subprocess.STARTUPINFO()
+            startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+        try:
+            subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation_flags,
+                startupinfo=startup_info,
+            )
+        except Exception:
+            try:
+                os.startfile("excel")
+            except Exception as exc:
+                messagebox.showerror(
+                    "Erro ao abrir Excel",
+                    f"Nao foi possivel abrir o Excel automaticamente:\n{exc}\n\n"
+                    "Abra o Excel manualmente e siga o passo a passo desta janela.",
+                )
 
     def _open_auditoria_armpil(self) -> None:
         xlsm = self._resolve_file("audit/auditoria_armpil_sele.xlsm")
@@ -571,6 +1032,13 @@ class ScriptLauncherApp(tk.Tk):
                 "Verifique se o arquivo esta na pasta 'outros' do projeto.",
             )
             return
+
+        macros_enabled, macro_status = self._excel_macro_status()
+        if not macros_enabled:
+            dialog = MacroTutorialDialog(self, macro_status, self._open_excel_options)
+            self.wait_window(dialog)
+            return
+
         try:
             os.startfile(str(xlsm))
         except Exception as exc:
@@ -591,5 +1059,6 @@ class ScriptLauncherApp(tk.Tk):
 
 
 if __name__ == "__main__":
+    _set_windows_app_id()
     app = ScriptLauncherApp()
     app.mainloop()
