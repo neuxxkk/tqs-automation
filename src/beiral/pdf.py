@@ -23,6 +23,7 @@ def gerar_pdf_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> b
         raise RuntimeError("A biblioteca fpdf nao esta instalada.")
 
     pdf = FPDF()
+    pdf.set_auto_page_break(False, margin=0)
     pdf.add_page()
 
     # --- Header / Project Info ---
@@ -164,10 +165,10 @@ def gerar_pdf_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> b
         pdf.cell(0, 6, f"Bitola: ø {entrada.armacao_minima_bitola_mm:.1f} mm  |  Espaçamento: {entrada.armacao_minima_espacamento_cm:.1f} cm", 0, 1, "L")
 
     # --- Footer ---
-    pdf.set_y(-25)
+    pdf.set_y(250)
     pdf.set_font("Arial", "I", 8)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 10, "Relatorio gerado automaticamente pelo Sistema de Automacao TQS", 0, 0, "C")
+    pdf.cell(0, 5, "Relatorio gerado automaticamente pelo Sistema de Automacao TQS", 0, 0, "C")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         pdf.output(tmp.name)
