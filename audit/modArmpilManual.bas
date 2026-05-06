@@ -1,0 +1,621 @@
+Option Explicit
+Option Private Module
+
+' ================================================================
+' modArmpilManual
+' ================================================================
+
+
+Public Function PromptPilarInput(ByVal ws As Worksheet, ByVal preferredPrefix As String) As String
+    Dim resp As Variant
+    Dim normalizedPilar As String
+    Dim defaultValue As String
+
+    defaultValue = GetSuggestedNextPilarInput(ws)
+
+    Do
+        resp = Application.InputBox( _
+            "Informe o numero do pilar." & vbCrLf & _
+            "O prefixo " & preferredPrefix & " sera aplicado automaticamente." & vbCrLf & _
+            "Ex.: " & preferredPrefix & IIf(defaultValue <> "", defaultValue, "44"), _
+            "Adicionar pilar", _
+            defaultValue, _
+            Type:=2 _
+        )
+
+        If IsDialogCancelled(resp) Then Exit Function
+
+        If TryNormalizeManualPilarInput(CStr(resp), preferredPrefix, normalizedPilar) Then
+            PromptPilarInput = Trim$(CStr(resp))
+            Exit Function
+        End If
+
+        MsgBox "Informe somente o numero do pilar, com opcional sufixo. Ex.: 44 ou 48A.", vbExclamation, "Adicionar pilar"
+    Loop
+End Function
+
+Public Function PromptPositiveLongValue(ByVal promptText As String, ByVal titleText As String, ByVal defaultValue As String, ByRef parsedValue As Long) As Boolean
+    Dim resp As Variant
+
+    Do
+        resp = Application.InputBox(promptText, titleText, defaultValue, Type:=2)
+        If IsDialogCancelled(resp) Then Exit Function
+
+        If TryGetPositiveLong(CStr(resp), parsedValue) Then
+            PromptPositiveLongValue = True
+            Exit Function
+        End If
+
+        MsgBox "Informe um numero inteiro maior que zero.", vbExclamation, titleText
+    Loop
+End Function
+
+Public Function PromptPositiveDoubleValue(ByVal promptText As String, ByVal titleText As String, ByVal defaultValue As String, ByRef parsedValue As Double) As Boolean
+    Dim resp As Variant
+
+    Do
+        resp = Application.InputBox(promptText, titleText, defaultValue, Type:=2)
+        If IsDialogCancelled(resp) Then Exit Function
+
+        If TryGetPositiveDouble(CStr(resp), parsedValue) Then
+            PromptPositiveDoubleValue = True
+            Exit Function
+        End If
+
+        MsgBox "Informe um numero maior que zero.", vbExclamation, titleText
+    Loop
+End Function
+
+Public Function GetSuggestedNextPilarInput(ByVal ws As Worksheet) As String
+    Dim lastRow As Long
+    Dim data As Variant
+    Dim i As Long
+    Dim maxNumber As Long
+    Dim currentNumber As Double
+
+    lastRow = GetLastUsedRowInColumns(ws, 2, 2)
+    If lastRow < 6 Then Exit Function
+
+    data = ws.Range(ws.Cells(6, 2), ws.Cells(lastRow, 2)).Value2
+    If IsArray(data) Then
+        For i = 1 To UBound(data, 1)
+            currentNumber = GetPilarSortNumber(CStr(data(i, 1)))
+            If currentNumber > 0# And currentNumber < 1000000000# Then
+                If CLng(currentNumber) > maxNumber Then maxNumber = CLng(currentNumber)
+            End If
+        Next i
+    Else
+        currentNumber = GetPilarSortNumber(CStr(data))
+        If currentNumber > 0# And currentNumber < 1000000000# Then maxNumber = CLng(currentNumber)
+    End If
+
+    If maxNumber > 0 Then GetSuggestedNextPilarInput = CStr(maxNumber + 1)
+End Function
+
+Public Function GetSuggestedLanceForNewPilar(ByVal ws As Worksheet) As String
+    Dim lastRow As Long
+    Dim cellValue As String
+
+    lastRow = GetLastUsedRowInColumns(ws, 3, 3)
+    If lastRow < 6 Then Exit Function
+
+    cellValue = Trim$(CStr(ws.Cells(lastRow, 3).Value2))
+    If IsNumeric(cellValue) Then GetSuggestedLanceForNewPilar = cellValue
+End Function
+
+Public Function GetPreferredPilarPrefix(ByVal ws As Worksheet) As String
+    Dim detectedPrefix As String
+
+    If TryGetPilarPrefixFromSheet(ws, detectedPrefix) Then
+        GetPreferredPilarPrefix = detectedPrefix
+        Exit Function
+    End If
+
+    On Error Resume Next
+    If TryGetPilarPrefixFromSheet(ThisWorkbook.Sheets("SELE"), detectedPrefix) Then
+        GetPreferredPilarPrefix = detectedPrefix
+    Else
+        GetPreferredPilarPrefix = "P"
+    End If
+    On Error GoTo 0
+End Function
+
+Public Function TryGetPilarPrefixFromSheet(ByVal ws As Worksheet, ByRef detectedPrefix As String) As Boolean
+    Dim lastRow As Long
+    Dim data As Variant
+    Dim i As Long
+    Dim pilarText As String
+
+    lastRow = GetLastUsedRowInColumns(ws, 2, 2)
+    If lastRow < 6 Then Exit Function
+
+    data = ws.Range(ws.Cells(6, 2), ws.Cells(lastRow, 2)).Value2
+
+    If IsArray(data) Then
+        For i = 1 To UBound(data, 1)
+            pilarText = NormalizePilarName(CStr(data(i, 1)))
+            If Left$(pilarText, 3) = "PAF" Then
+                detectedPrefix = "PAF"
+                TryGetPilarPrefixFromSheet = True
+                Exit Function
+            End If
+            If Left$(pilarText, 1) = "P" Then
+                detectedPrefix = "P"
+                TryGetPilarPrefixFromSheet = True
+                Exit Function
+            End If
+        Next i
+    Else
+        pilarText = NormalizePilarName(CStr(data))
+        If Left$(pilarText, 3) = "PAF" Then
+            detectedPrefix = "PAF"
+            TryGetPilarPrefixFromSheet = True
+        ElseIf Left$(pilarText, 1) = "P" Then
+            detectedPrefix = "P"
+            TryGetPilarPrefixFromSheet = True
+        End If
+    End If
+End Function
+
+Public Function TryNormalizeManualPilarInput(ByVal rawValue As Variant, ByVal preferredPrefix As String, ByRef normalizedPilar As String) As Boolean
+    Dim rawText As String
+    Dim pilarBody As String
+
+    rawText = UCase$(Trim$(CStr(rawValue)))
+    rawText = Replace(rawText, " ", "")
+    If rawText = "" Then Exit Function
+
+    If Left$(rawText, 3) = "PAF" Then
+        pilarBody = Mid$(rawText, 4)
+    ElseIf Left$(rawText, 1) = "P" Then
+        pilarBody = Mid$(rawText, 2)
+    Else
+        pilarBody = rawText
+    End If
+
+    If Not IsSimplePilarBody(pilarBody) Then Exit Function
+
+    normalizedPilar = preferredPrefix & pilarBody
+    TryNormalizeManualPilarInput = True
+End Function
+
+Public Function IsSimplePilarBody(ByVal pilarBody As String) As Boolean
+    Dim i As Long
+    Dim ch As String
+
+    pilarBody = Trim$(pilarBody)
+    If pilarBody = "" Then Exit Function
+    If Not Mid$(pilarBody, 1, 1) Like "#" Then Exit Function
+
+    For i = 1 To Len(pilarBody)
+        ch = Mid$(pilarBody, i, 1)
+        If Not (ch Like "[A-Z0-9]") Then Exit Function
+    Next i
+
+    IsSimplePilarBody = True
+End Function
+
+Public Function NormalizeManualArmpilEntries(ByVal ws As Worksheet, ByRef rowCount As Long, ByRef infoMessage As String) As Boolean
+    On Error GoTo TrataErro
+
+    Dim stage As String
+    Dim lastRow As Long
+    stage = "identificar ultima linha"
+    lastRow = GetLastArmpilDataRow(ws)
+    If lastRow < 6 Then
+        infoMessage = "Nenhuma linha preenchida na ARMPIL para atualizar."
+        Exit Function
+    End If
+
+    Dim maxRows As Long
+    stage = "dimensionar buffers"
+    maxRows = lastRow - FIRST_DATA_ROW + 1
+
+    Dim dataOut() As Variant
+    ReDim dataOut(1 To maxRows, 1 To 4)
+
+    Dim pilarValues() As String
+    Dim hasLance() As Boolean
+    Dim lanceValues() As Long
+    Dim qtyValues() As Long
+    Dim diamValues() As Double
+    Dim sourceRows() As Long
+    ReDim pilarValues(1 To maxRows)
+    ReDim hasLance(1 To maxRows)
+    ReDim lanceValues(1 To maxRows)
+    ReDim qtyValues(1 To maxRows)
+    ReDim diamValues(1 To maxRows)
+    ReDim sourceRows(1 To maxRows)
+
+    Dim issueList As String
+    Dim issueCount As Long
+    Dim i As Long
+    Dim pilarText As String
+    Dim lanceValue As Long
+    Dim qtyValue As Long
+    Dim diamValue As Double
+    Dim rowDetail As String
+    Dim preferredPrefix As String
+    Dim lanceText As String
+    Dim rawPilar As Variant
+    Dim rawLance As Variant
+    Dim rawQty As Variant
+    Dim rawDiam As Variant
+
+    rowCount = 0
+    stage = "identificar prefixo"
+    preferredPrefix = GetPreferredPilarPrefix(ws)
+
+    stage = "validar linhas manuais"
+    For i = 1 To maxRows
+        rawPilar = ws.Cells(FIRST_DATA_ROW + i - 1, COL_PILAR).Value2
+        rawLance = ws.Cells(FIRST_DATA_ROW + i - 1, COL_LANCE).Value2
+        rawQty = ws.Cells(FIRST_DATA_ROW + i - 1, COL_QTD).Value2
+        rawDiam = ws.Cells(FIRST_DATA_ROW + i - 1, COL_BITOLA).Value2
+
+        If IsArmpilInputRowEmpty(rawPilar, rawLance, rawQty, rawDiam) Then
+            GoTo NextRow
+        End If
+
+        rowDetail = ""
+        If Not TryNormalizeManualPilarInput(rawPilar, preferredPrefix, pilarText) Then
+            rowDetail = "Pilar invalido"
+        ElseIf Not TryGetPositiveLong(rawQty, qtyValue) Then
+            rowDetail = "Qtd(Qf) invalida"
+        ElseIf Not TryGetPositiveDouble(rawDiam, diamValue) Then
+            rowDetail = "Bitola invalida"
+        Else
+            lanceText = Trim$(CStr(rawLance))
+            If lanceText <> "" Then
+                If Not TryGetPositiveLong(lanceText, lanceValue) Then
+                    rowDetail = "Lance invalido"
+                End If
+            Else
+                lanceValue = 0
+            End If
+        End If
+
+        If rowDetail <> "" Then
+            AppendArmpilValidationIssue issueList, issueCount, FIRST_DATA_ROW + i - 1, rowDetail
+            GoTo NextRow
+        End If
+
+        rowCount = rowCount + 1
+        pilarValues(rowCount) = pilarText
+        hasLance(rowCount) = (lanceText <> "")
+        lanceValues(rowCount) = lanceValue
+        qtyValues(rowCount) = qtyValue
+        diamValues(rowCount) = diamValue
+        sourceRows(rowCount) = FIRST_DATA_ROW + i - 1
+NextRow:
+    Next i
+
+    If issueCount > 0 Then
+        infoMessage = _
+            "Existem linhas manuais incompletas ou invalidas na ARMPIL:" & vbCrLf & _
+            issueList & vbCrLf & vbCrLf & _
+            "Preencha numero do Pilar, Qtd(Qf) e Bitola(mm)." & vbCrLf & _
+            "O lance pode ficar em branco somente quando a macro conseguir inferi-lo pelo contexto."
+        Exit Function
+    End If
+
+    If rowCount = 0 Then
+        infoMessage = "Nenhuma linha valida encontrada na ARMPIL para atualizar."
+        Exit Function
+    End If
+
+    stage = "resolver lances em branco"
+    If Not ResolveMissingManualLances(pilarValues, hasLance, lanceValues, sourceRows, rowCount, infoMessage) Then
+        Exit Function
+    End If
+
+    stage = "montar saida"
+    For i = 1 To rowCount
+        dataOut(i, 1) = pilarValues(i)
+        dataOut(i, 2) = lanceValues(i)
+        dataOut(i, 3) = qtyValues(i)
+        dataOut(i, 4) = diamValues(i)
+    Next i
+
+    stage = "limpar ARMPIL"
+    ClearARMPIL ws
+    stage = "renderizar ARMPIL"
+    RenderArmpilRows ws, dataOut, rowCount, "  Atualizado manualmente: " & rowCount & " registros"
+    stage = "atualizar orientacao"
+    SetArmpilManualHint ws
+
+    NormalizeManualArmpilEntries = True
+    Exit Function
+
+TrataErro:
+    Err.Raise Err.Number, , "NormalizeManualArmpilEntries/" & stage & ": " & Err.Description
+End Function
+
+Public Function ResolveMissingManualLances(ByRef pilarValues() As String, ByRef hasLance() As Boolean, ByRef lanceValues() As Long, ByRef sourceRows() As Long, ByVal rowCount As Long, ByRef infoMessage As String) As Boolean
+    On Error GoTo TrataErro
+
+    Dim groupStart As Long
+    Dim groupEnd As Long
+
+    If rowCount <= 0 Then Exit Function
+
+    groupStart = 1
+    Do While groupStart <= rowCount
+        groupEnd = groupStart
+        Do While groupEnd < rowCount
+            If pilarValues(groupEnd + 1) <> pilarValues(groupStart) Then Exit Do
+            groupEnd = groupEnd + 1
+        Loop
+
+        If Not TryResolveManualLanceGroup(pilarValues, hasLance, lanceValues, sourceRows, rowCount, groupStart, groupEnd, infoMessage) Then
+            Exit Function
+        End If
+
+        groupStart = groupEnd + 1
+    Loop
+
+    ResolveMissingManualLances = True
+    Exit Function
+
+TrataErro:
+    Err.Raise Err.Number, , "ResolveMissingManualLances/grupo " & groupStart & "-" & groupEnd & ": " & Err.Description
+End Function
+
+Public Function TryResolveManualLanceGroup(ByRef pilarValues() As String, ByRef hasLance() As Boolean, ByRef lanceValues() As Long, ByRef sourceRows() As Long, ByVal rowCount As Long, ByVal groupStart As Long, ByVal groupEnd As Long, ByRef infoMessage As String) As Boolean
+    On Error GoTo TrataErro
+
+    Dim i As Long
+    Dim hasMissing As Boolean
+    Dim prevSeq As String
+    Dim nextSeq As String
+    Dim candidateSeq As String
+
+    For i = groupStart To groupEnd
+        If Not hasLance(i) Then
+            hasMissing = True
+            Exit For
+        End If
+    Next i
+
+    If Not hasMissing Then
+        TryResolveManualLanceGroup = True
+        Exit Function
+    End If
+
+    prevSeq = GetNeighborExplicitLanceSequence(pilarValues, hasLance, lanceValues, rowCount, groupStart, groupEnd, -1)
+    nextSeq = GetNeighborExplicitLanceSequence(pilarValues, hasLance, lanceValues, rowCount, groupStart, groupEnd, 1)
+    candidateSeq = ChooseCandidateLanceSequence(prevSeq, nextSeq, hasLance, lanceValues, groupStart, groupEnd)
+
+    If candidateSeq = "" Then
+        infoMessage = BuildMissingLanceMessage(pilarValues(groupStart), sourceRows, groupStart, groupEnd)
+        Exit Function
+    End If
+
+    ApplyCandidateLanceSequence hasLance, lanceValues, groupStart, groupEnd, candidateSeq
+    TryResolveManualLanceGroup = True
+    Exit Function
+
+TrataErro:
+    Err.Raise Err.Number, , "TryResolveManualLanceGroup/" & pilarValues(groupStart) & " linhas " & sourceRows(groupStart) & "-" & sourceRows(groupEnd) & ": " & Err.Description
+End Function
+
+Public Function GetNeighborExplicitLanceSequence(ByRef pilarValues() As String, ByRef hasLance() As Boolean, ByRef lanceValues() As Long, ByVal rowCount As Long, ByVal groupStart As Long, ByVal groupEnd As Long, ByVal direction As Long) As String
+    Dim idx As Long
+    Dim neighborStart As Long
+    Dim neighborEnd As Long
+
+    If direction < 0 Then
+        idx = groupStart - 1
+        Do While idx >= 1
+            neighborEnd = idx
+            neighborStart = idx
+            Do While neighborStart > 1
+                If pilarValues(neighborStart - 1) <> pilarValues(neighborEnd) Then Exit Do
+                neighborStart = neighborStart - 1
+            Loop
+
+            GetNeighborExplicitLanceSequence = BuildExplicitLanceSequence(hasLance, lanceValues, neighborStart, neighborEnd)
+            If GetNeighborExplicitLanceSequence <> "" Then Exit Function
+
+            idx = neighborStart - 1
+        Loop
+    Else
+        idx = groupEnd + 1
+        Do While idx <= rowCount
+            neighborStart = idx
+            neighborEnd = idx
+            Do While neighborEnd < rowCount
+                If pilarValues(neighborEnd + 1) <> pilarValues(neighborStart) Then Exit Do
+                neighborEnd = neighborEnd + 1
+            Loop
+
+            GetNeighborExplicitLanceSequence = BuildExplicitLanceSequence(hasLance, lanceValues, neighborStart, neighborEnd)
+            If GetNeighborExplicitLanceSequence <> "" Then Exit Function
+
+            idx = neighborEnd + 1
+        Loop
+    End If
+End Function
+
+Public Function BuildExplicitLanceSequence(ByRef hasLance() As Boolean, ByRef lanceValues() As Long, ByVal groupStart As Long, ByVal groupEnd As Long) As String
+    Dim i As Long
+
+    For i = groupStart To groupEnd
+        If Not hasLance(i) Then Exit Function
+        If BuildExplicitLanceSequence <> "" Then BuildExplicitLanceSequence = BuildExplicitLanceSequence & ","
+        BuildExplicitLanceSequence = BuildExplicitLanceSequence & CStr(lanceValues(i))
+    Next i
+End Function
+
+Public Function ChooseCandidateLanceSequence(ByVal prevSeq As String, ByVal nextSeq As String, ByRef hasLance() As Boolean, ByRef lanceValues() As Long, ByVal groupStart As Long, ByVal groupEnd As Long) As String
+    Dim groupSize As Long
+    Dim prevMatches As Boolean
+    Dim nextMatches As Boolean
+    Dim interSeq As String
+
+    groupSize = groupEnd - groupStart + 1
+
+    If prevSeq <> "" Then
+        prevMatches = (CountCsvItems(prevSeq) = groupSize) And DoesCandidateMatchGroup(prevSeq, hasLance, lanceValues, groupStart, groupEnd)
+    End If
+    If nextSeq <> "" Then
+        nextMatches = (CountCsvItems(nextSeq) = groupSize) And DoesCandidateMatchGroup(nextSeq, hasLance, lanceValues, groupStart, groupEnd)
+    End If
+
+    If prevMatches And nextMatches Then
+        If prevSeq = nextSeq Then
+            ChooseCandidateLanceSequence = prevSeq
+            Exit Function
+        End If
+    ElseIf prevMatches Then
+        ChooseCandidateLanceSequence = prevSeq
+        Exit Function
+    ElseIf nextMatches Then
+        ChooseCandidateLanceSequence = nextSeq
+        Exit Function
+    End If
+
+    If prevSeq <> "" And nextSeq <> "" Then
+        interSeq = BuildOrderedLanceIntersection(prevSeq, nextSeq)
+        If CountCsvItems(interSeq) = groupSize Then
+            If DoesCandidateMatchGroup(interSeq, hasLance, lanceValues, groupStart, groupEnd) Then
+                ChooseCandidateLanceSequence = interSeq
+            End If
+        End If
+    End If
+End Function
+
+Public Function BuildOrderedLanceIntersection(ByVal leftSeq As String, ByVal rightSeq As String) As String
+    Dim dict As Object
+    Set dict = CreateObject("Scripting.Dictionary")
+
+    Dim seen As Object
+    Set seen = CreateObject("Scripting.Dictionary")
+
+    Dim parts() As String
+    Dim i As Long
+    Dim token As String
+
+    If Trim$(leftSeq) = "" Or Trim$(rightSeq) = "" Then Exit Function
+
+    parts = Split(rightSeq, ",")
+    For i = LBound(parts) To UBound(parts)
+        token = Trim$(parts(i))
+        If token <> "" Then dict(token) = True
+    Next i
+
+    parts = Split(leftSeq, ",")
+    For i = LBound(parts) To UBound(parts)
+        token = Trim$(parts(i))
+        If token <> "" Then
+            If dict.Exists(token) Then
+                If Not seen.Exists(token) Then
+                    If BuildOrderedLanceIntersection <> "" Then BuildOrderedLanceIntersection = BuildOrderedLanceIntersection & ","
+                    BuildOrderedLanceIntersection = BuildOrderedLanceIntersection & token
+                    seen(token) = True
+                End If
+            End If
+        End If
+    Next i
+End Function
+
+Public Function DoesCandidateMatchGroup(ByVal candidateSeq As String, ByRef hasLance() As Boolean, ByRef lanceValues() As Long, ByVal groupStart As Long, ByVal groupEnd As Long) As Boolean
+    Dim i As Long
+    Dim token As String
+
+    If Trim$(candidateSeq) = "" Then Exit Function
+    If CountCsvItems(candidateSeq) <> (groupEnd - groupStart + 1) Then Exit Function
+
+    For i = groupStart To groupEnd
+        token = GetCsvItem(candidateSeq, i - groupStart)
+        If Not IsNumeric(token) Then Exit Function
+        If hasLance(i) Then
+            If CLng(token) <> lanceValues(i) Then Exit Function
+        End If
+    Next i
+
+    DoesCandidateMatchGroup = True
+End Function
+
+Public Sub ApplyCandidateLanceSequence(ByRef hasLance() As Boolean, ByRef lanceValues() As Long, ByVal groupStart As Long, ByVal groupEnd As Long, ByVal candidateSeq As String)
+    Dim i As Long
+    Dim token As String
+
+    For i = groupStart To groupEnd
+        If Not hasLance(i) Then
+            token = GetCsvItem(candidateSeq, i - groupStart)
+            If Not IsNumeric(token) Then Err.Raise vbObjectError + 2201, , "Sequencia de lances invalida: " & candidateSeq
+            lanceValues(i) = CLng(token)
+            hasLance(i) = True
+        End If
+    Next i
+End Sub
+
+Public Function GetCsvItem(ByVal csvText As String, ByVal zeroBasedIndex As Long) As String
+    Dim parts() As String
+
+    If zeroBasedIndex < 0 Then Exit Function
+
+    parts = Split(csvText, ",")
+    If zeroBasedIndex > UBound(parts) Then Exit Function
+
+    GetCsvItem = Trim$(parts(zeroBasedIndex))
+End Function
+
+Public Function BuildMissingLanceMessage(ByVal pilarName As String, ByRef sourceRows() As Long, ByVal groupStart As Long, ByVal groupEnd As Long) As String
+    Dim firstRow As Long
+    Dim lastRow As Long
+
+    firstRow = sourceRows(groupStart)
+    lastRow = sourceRows(groupEnd)
+
+    If firstRow = lastRow Then
+        BuildMissingLanceMessage = _
+            "Nao foi possivel identificar automaticamente o lance do pilar " & pilarName & "." & vbCrLf & _
+            "Preencha o lance na linha " & firstRow & " e rode novamente."
+    Else
+        BuildMissingLanceMessage = _
+            "Nao foi possivel identificar automaticamente os lances do pilar " & pilarName & "." & vbCrLf & _
+            "Preencha os lances nas linhas " & firstRow & " a " & lastRow & " e rode novamente."
+    End If
+End Function
+
+Public Function IsArmpilInputRowEmpty(ByVal pilarValue As Variant, ByVal lanceValue As Variant, ByVal qtyValue As Variant, ByVal diamValue As Variant) As Boolean
+    IsArmpilInputRowEmpty = _
+        Trim$(CStr(pilarValue)) = "" And _
+        Trim$(CStr(lanceValue)) = "" And _
+        Trim$(CStr(qtyValue)) = "" And _
+        Trim$(CStr(diamValue)) = ""
+End Function
+
+Public Sub AppendArmpilValidationIssue(ByRef issueList As String, ByRef issueCount As Long, ByVal rowNumber As Long, ByVal detail As String)
+    issueCount = issueCount + 1
+    If issueCount <= 8 Then
+        If issueList <> "" Then issueList = issueList & vbCrLf
+        issueList = issueList & " - Linha " & rowNumber & ": " & detail
+    ElseIf issueCount = 9 Then
+        issueList = issueList & vbCrLf & " - ..."
+    End If
+End Sub
+
+Public Function TryGetPositiveLong(ByVal cellValue As Variant, ByRef parsedValue As Long) As Boolean
+    Dim parsedDouble As Double
+
+    If Not TryGetPositiveDouble(cellValue, parsedDouble) Then Exit Function
+    parsedValue = CLng(parsedDouble)
+    If parsedDouble <> parsedValue Then Exit Function
+
+    TryGetPositiveLong = (parsedValue > 0)
+End Function
+
+Public Function TryGetPositiveDouble(ByVal cellValue As Variant, ByRef parsedValue As Double) As Boolean
+    Dim rawText As String
+
+    rawText = CleanCSV(CStr(cellValue))
+    If rawText = "" Then Exit Function
+
+    parsedValue = Val(rawText)
+    If parsedValue <= 0# Then Exit Function
+
+    TryGetPositiveDouble = True
+End Function

@@ -1,210 +1,103 @@
-# tqs-automation
+# Scripts Formula
 
-Ferramenta de automação para extração e classificação de ferros de armadura em projetos estruturais no **TQS**. A partir de um desenho DWG aberto no editor, o script identifica automaticamente todos os ferros inteligentes (`IPOFER`), classifica cada um pela posição em relação à borda da viga e gera uma planilha Excel formatada com o relatório completo.
+Suite interna de automacoes da Formula Engenharia para apoio a fluxos de projeto, conferencia e calculo estrutural.
 
----
+Hoje o sistema reune quatro frentes principais em uma central unica:
 
-## Sumário
+- `Dimensionar Vigas`: processamento de vigas no TQS e coleta dos `RELGER.LST`.
+- `Calculo de Beiral`: aplicacao web em Streamlit para calculo estrutural e emissao de memorial.
+- `Calculo de Escadas`: aplicacao web em Streamlit para modelagem de lances, carregamentos e memoria de calculo.
+- `Auditoria ARMPIL`: planilha Excel com macros para conferencia de armacao de pilares.
 
-- [Download rápido (usuário leigo)](#download-rápido-usuário-leigo)
-- [Funcionalidades](#funcionalidades)
-- [Pré-requisitos](#pré-requisitos)
-- [Dependências](#dependências)
-- [Instalação](#instalação)
-- [Publicação do instalador (maintainer)](#publicação-do-instalador-maintainer)
-- [Como usar](#como-usar)
-- [Como funciona](#como-funciona)
-- [Saída — Planilha Excel](#saída--planilha-excel)
-- [Configurações](#configurações)
-- [Licença](#licença)
+## Estrutura do projeto
 
----
+```text
+assets/            arquivos visuais e scripts copiados para o TQS
+audit/             planilha Excel, modulos VBA e apoio da auditoria ARMPIL
+docs/              diretrizes visuais e backlog
+installer/         setup Inno, pos-instalacao e build do instalador
+launchers/         atalhos .bat para abrir a central e utilitarios
+src/               app principal, utilitarios Python e modulos de dominio
+tests/             testes automatizados dos modulos Python
+```
 
-## Download rápido (usuário leigo)
+## Experiencia principal
 
-Use o instalador com 1 clique:
+O ponto de entrada para usuarios finais e a central grafica em `src/app.py`, aberta pelo atalho `launchers/Scripts Formula.bat`.
 
-- **Baixar agora (Windows):** https://github.com/neuxxkk/tqs-automation/releases/latest/download/Scripts-Formula-Setup.exe
+Ela concentra:
 
-Após baixar:
+- navegacao lateral com acesso rapido a cada ferramenta;
+- abertura silenciosa das apps web em portas locais dedicadas;
+- abertura orientada da auditoria ARMPIL;
+- atualizacao do sistema via `src/updater.py`.
 
-1. Execute o `Scripts-Formula-Setup.exe`.
-2. Clique em **Avançar** até concluir.
-3. Abra o programa **Scripts Formula** no menu Iniciar ou atalho da área de trabalho.
+## Instalacao
 
-> O instalador executa uma configuração inicial para preparar todas as funcionalidades.
+### Usuario final
 
----
+1. Execute o instalador gerado em `dist/Scripts-Formula-Setup.exe`.
+2. Conclua o assistente.
+3. Aguarde a configuracao inicial instalar as dependencias Python.
+4. Abra `Scripts Formula` pelo atalho criado.
 
-## Funcionalidades
+### Ambiente de desenvolvimento
 
-- **Integração nativa com o TQS** — acessível diretamente pelo menu do editor via botão EAG.
-- **Leitura de DWG** — lê linhas, polilinhas e objetos inteligentes (`IPOFER`) do desenho.
-- **Classificação geométrica de ferros** em três categorias:
-  - 🔴 **BORDA** — ferros próximos ao perímetro da viga (dentro da tolerância configurável).
-  - 🟡 **ALTERNADO** — ferros com fator de alternância ativo.
-  - 🔵 **INTERNO** — ferros internos simples.
-- **Cálculo automático de comprimento de faixa** por posição.
-- **Relatório Excel colorido** com totais por categoria, compatível com Excel 2019 e superior.
-
----
-
-## Pré-requisitos
-
-- TQS instalado com suporte à execução de scripts Python
-- Python 3.13 com `pip` e variável de ambiente configurados
-- Acesso ao pacote `TQSPythonInterface` da instalação do TQS
-
----
-
-## Dependências
-
-| Pacote | Versão necessária | Obrigatório | Finalidade |
-|---|---|---|---|
-| **Python** | `3.13` | Sim | Ambiente de execução |
-| **TQSPythonInterface** | `2.1.7` | Sim | Módulos `TQSDwg`, `TQSGeo`, `TQSEag`, `TQSJan` |
-| **xlsxwriter** | `>= 3.0.0` | Sim | Geração da planilha Excel com total compatibilidade com Excel 2019+ |
-| **Pillow** | `>= 10.0.0` | Não | Necessário apenas se as imagens `detS.png` / `detAL.png` forem utilizadas |
-
-> **Por que `xlsxwriter` e não `openpyxl`?**
-> O Excel 2019 exige o atributo `applyFill="1"` no XML interno do arquivo `.xlsx` para renderizar cores em células. O `openpyxl` não gera esse atributo, fazendo com que toda formatação de cor seja silenciosamente ignorada em versões antigas do Excel. O `xlsxwriter` segue o padrão OOXML corretamente e funciona em todas as versões.
-
----
-
-## Instalação
-
-### Instalação para usuário final (recomendada)
-
-1. Baixe o instalador em **Download rápido (usuário leigo)**.
-2. Execute o setup e finalize o assistente.
-3. Abra o atalho **Scripts Formula**.
-
-### Instalação manual (modo desenvolvedor)
-
-1. **Clone ou baixe** este repositório.
-
-2. Instale o Python 3.13 com `pip` e variável de ambiente:
-   - Download: https://www.python.org/downloads/release/python-31312/
-   - Durante a instalação, marque **"Add Python to PATH"** e **"Install pip"**.
-
-3. Instale as dependências Python:
-
-   ```bash
-   pip install xlsxwriter
-   pip install pillow                                                     
-   pip install C:\TQSW\EXEC\PYTHON\TQSPythonInterface-2.1.7-py313-none-any.whl
-   ```
-
-4. Copie todo o conteúdo de `\arquivos` e a pasta `imgs` para `C:\TQSW\EXEC\Python` do seu projeto TQS.
-
----
-
-## Publicação do instalador (maintainer)
-
-Arquivos já preparados no projeto:
-
-- Script do Inno Setup: `instalador/ScriptsFormula.iss`
-- Pós-instalação automática: `instalador/instalar_completo.bat`
-- Build local do instalador: `instalador/build_installer.ps1`
-- Workflow de build/release: `.github/workflows/build-installer.yml`
-
-Fluxo recomendado:
-
-1. Crie uma Release no GitHub.
-2. O workflow vai gerar `Scripts-Formula-Setup.exe`.
-3. O arquivo será anexado automaticamente na Release publicada.
-4. Divulgue o link de download direto no README e na documentação interna do time.
-
-Para build local em Windows:
+1. Instale Python 3.13 no Windows.
+2. Instale as dependencias principais:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\instalador\build_installer.ps1
+python -m pip install --upgrade pip
+python -m pip install xlsxwriter pillow streamlit==1.56.0 fpdf2 matplotlib PyMuPDF
 ```
 
----
+3. Se precisar copiar os arquivos de integracao para o TQS:
 
-## Como usar
-
-### Via botão no TQS (EAG)
-
-1. Abra o desenho DWG no editor do TQS.
-2. No menu **Relatório Ferros**, clique em **Extrair Ferros e Gerar Relatório**.
-3. Acompanhe as mensagens de progresso no painel de saída do TQS.
-4. O arquivo Excel é salvo automaticamente na mesma pasta do DWG:
-
-   ```
-   <pasta do DWG>\Ferro Corrido - <nome do desenho>.xlsx
-   ```
-
-> **Atenção:** se o arquivo Excel já estiver aberto, o TQS exibirá uma mensagem de erro pedindo que você o feche antes de tentar novamente.
-
-### Via linha de comando (standalone)
-
-Para executar fora do TQS (desde que os módulos `TQS` estejam disponíveis no ambiente Python):
-
-```bash
-python extracao_tabela_ferro.py
+```powershell
+python .\src\install_tqs_files.py
 ```
 
----
+4. Para executar a central localmente:
 
-## Como funciona
-
-```
-Fase 1 ──► Fase 2 ──► Fase 3 ──► Fase 4 ──► Fase 5
-Inicializa  Contorno   Extrai     Classifica  Gera
-  o DWG     da Viga    os Ferros  os Ferros   Relatório
+```powershell
+python .\src\app.py
 ```
 
-| Fase | Nome | Descrição |
-|------|------|-----------|
-| **1** | Inicialização | Conecta ao DWG aberto no TQS e resolve o caminho de saída da planilha. |
-| **2** | Contorno da viga | Extrai segmentos de linha e polilinha dos níveis `228` (viga) e `227` (pilar) para delimitar o perímetro analisado. |
-| **3** | Extração dos ferros | Lê todos os objetos `IPOFER` do desenho, coletando posição, bitola, quantidade, comprimento e faixas de distribuição. |
-| **4** | Classificação geométrica | Calcula a distância de cada ponto de inserção do ferro aos segmentos do contorno. Ferros dentro da `TOLERANCIA` são marcados como **BORDA**; os demais são separados em **ALTERNADO** ou **INTERNO** conforme o `alternatingMode`. |
-| **5** | Geração do relatório | Cria a planilha Excel com linhas coloridas por tipo, linhas em branco entre posições distintas, totais por categoria e bloco auxiliar de imagens (opcional). |
+## Aplicacoes web
 
----
+### Calculo de Beiral
 
-## Saída — Planilha Excel
+- script: `src/beiral/app.py`
+- porta local padrao: `8507`
+- modulo de dominio: `src/beiral/`
 
-O arquivo gerado contém uma aba **"Ferros"** com as seguintes colunas:
+### Calculo de Escadas
 
-| Coluna | Descrição |
-|---|---|
-| **Posição** | Identificador do ferro (ex.: `N1`, `N2`, …) |
-| **Quantidade** | Número de ferros da faixa |
-| **Espaçamento (cm)** | Espaçamento entre ferros na faixa |
-| **Compr. Faixa (cm)** | Comprimento total da faixa (`Quantidade × Espaçamento`) |
-| **Tipo** | `BORDA`, `ALTERNADO` ou `INTERNO` |
+- script: `src/escada/app.py`
+- porta local padrao: `8508`
+- modulo de dominio: `src/escada/`
+- testes dedicados em `tests/escada/`
 
-Ao final da tabela são exibidos os totais:
+## Instalador
 
-| Linha | Cor | Valor |
-|---|---|---|
-| Total Geral | 🟢 Verde | Soma de todas as faixas |
-| Total Alternados | 🟡 Amarelo | Soma das faixas `ALTERNADO` |
-| Total Simples | 🔵 Azul | Soma das faixas `INTERNO` |
-| Total Borda | 🔴 Vermelho | Soma das faixas `BORDA` |
+Arquivos principais:
 
-Se as imagens `imgs\detS.png` e `imgs\detAL.png` existirem na mesma pasta do script, elas são inseridas à direita da tabela com os valores calculados de **Total Simples + Borda/2** e **Total Alternados**.
+- `installer/setup.iss`: empacotamento Windows com Inno Setup
+- `installer/post_install_gui.pyw`: interface da configuracao inicial
+- `installer/build.ps1`: build local do instalador
 
----
+Build local:
 
-## Configurações
+```powershell
+powershell -ExecutionPolicy Bypass -File .\installer\build.ps1
+```
 
-As constantes de configuração ficam no início de `extracao_tabela_ferro.py`:
+## Observacoes de manutencao
 
-| Constante | Padrão | Descrição |
-|---|---|---|
-| `TOLERANCIA` | `10` | Distância máxima (em unidades do DWG) para considerar um ferro como BORDA |
-| `NIVEL_VIGA` | `228` | Nível DWG dos segmentos de contorno da viga |
-| `NIVEL_PILAR` | `227` | Nível DWG adicional incluído no mapeamento do contorno |
+- `beiral/` e `escada/` seguem o mesmo padrao: `app.py` de entrada dentro do pacote e modulos de dominio ao lado.
+- A auditoria ARMPIL depende de macros habilitadas no Excel.
+- O modulo de escadas depende de `matplotlib` alem das dependencias comuns de Streamlit.
 
----
+## Licenca
 
-## Licença
-
-Distribuído sob a licença **MIT**. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
-
-> © 2026 Vítor Neuenschwander
+Distribuido sob a licenca MIT. Veja [LICENSE](LICENSE).

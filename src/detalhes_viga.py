@@ -30,10 +30,14 @@ class ProgressoVigas(tk.Toplevel):
             self._root_owner = None
             super().__init__(parent)
 
+        self._close_requested = False
+        self._closed = False
+        self._selection_var: tk.BooleanVar | None = None
+
         self.title("Dimensionamento de Vigas")
         self.configure(bg=_C100)
         self.resizable(False, False)
-        self.protocol("WM_DELETE_WINDOW", lambda: None)  # impede fechar manualmente
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_ui()
         self.update_idletasks()
@@ -156,7 +160,7 @@ class ProgressoVigas(tk.Toplevel):
             pady=6,
             cursor="hand2",
             bd=0,
-            state="disabled",
+            state="normal",
             command=self._on_close,
         )
         self._btn_fechar.pack(side="right")
@@ -167,21 +171,64 @@ class ProgressoVigas(tk.Toplevel):
         sh = self.winfo_screenheight()
         self.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
 
+    @property
+    def cancelado(self) -> bool:
+        return self._close_requested
+
+    def _is_open(self) -> bool:
+        if self._closed:
+            return False
+        try:
+            return bool(self.winfo_exists())
+        except tk.TclError:
+            return False
+
     def _on_close(self) -> None:
-        self.destroy()
-        if self._root_owner:
-            self._root_owner.destroy()
+        self._close_requested = True
+        try:
+            self._progress.stop()
+        except (AttributeError, tk.TclError):
+            pass
+
+        if self._selection_var is not None:
+            try:
+                self._selection_var.set(False)
+            except tk.TclError:
+                pass
+
+        self.fechar(destroy_owner=self._selection_var is None)
+
+    def fechar(self, destroy_owner: bool = True) -> None:
+        if not self._closed:
+            self._closed = True
+            try:
+                self.destroy()
+            except tk.TclError:
+                pass
+
+        if destroy_owner and self._root_owner:
+            try:
+                self._root_owner.destroy()
+            except tk.TclError:
+                pass
+            self._root_owner = None
 
     def set_etapa(self, texto: str) -> None:
+        if not self._is_open():
+            return
         self._etapa_var.set(texto)
         self._log(f"[ETAPA] {texto}")
         self.update()
 
     def set_detalhe(self, texto: str) -> None:
+        if not self._is_open():
+            return
         self._detalhe_var.set(texto)
         self.update()
 
     def set_progresso(self, atual: int, total: int, pavimento: str = "") -> None:
+        if not self._is_open():
+            return
         pct = int(atual / total * 100) if total > 0 else 0
         self._progress["value"] = pct
         self._prog_label.configure(text=f"{atual} / {total}  ({pct}%)")
@@ -191,6 +238,8 @@ class ProgressoVigas(tk.Toplevel):
         self.update()
 
     def finalizar(self, mensagem: str = "Concluído com sucesso.") -> None:
+        if not self._is_open():
+            return
         self._etapa_var.set(mensagem)
         self._detalhe_var.set("")
         self._progress["value"] = 100
@@ -201,6 +250,8 @@ class ProgressoVigas(tk.Toplevel):
         self.update()
 
     def erro(self, mensagem: str) -> None:
+        if not self._is_open():
+            return
         self._etapa_var.set("Erro no processamento")
         self._detalhe_var.set(mensagem)
         self._log(f"\n[ERRO] {mensagem}")
@@ -213,10 +264,14 @@ class ProgressoVigas(tk.Toplevel):
 
         Retorna True se o usuário clicou em Selecionar, False se fechou a janela.
         """
+        if not self._is_open():
+            return False
+
         self._etapa_var.set(etapa)
         self._detalhe_var.set(detalhe)
 
         var = tk.BooleanVar(value=False)
+        self._selection_var = var
 
         btn = tk.Button(
             self._btn_row,
@@ -234,12 +289,28 @@ class ProgressoVigas(tk.Toplevel):
             command=lambda: var.set(True),
         )
         btn.pack(side="right", padx=(0, 8))
-        self.update()
-        self.wait_variable(var)
-        btn.destroy()
-        return True
+        try:
+            self.update()
+            self.wait_variable(var)
+            selecionado = bool(var.get())
+        except tk.TclError:
+            selecionado = False
+        finally:
+            self._selection_var = None
+            try:
+                btn.destroy()
+            except tk.TclError:
+                pass
+
+        if self._close_requested:
+            self.fechar()
+            return False
+
+        return selecionado
 
     def _log(self, texto: str) -> None:
+        if not self._is_open():
+            return
         self._log_text.configure(state="normal")
         self._log_text.insert("end", texto + "\n")
         self._log_text.see("end")
@@ -365,6 +436,26 @@ def select_destination():
         return ""
 
 
+def _abortar_se_cancelado(progresso: ProgressoVigas) -> bool:
+    if not progresso.cancelado:
+        return False
+    progresso.fechar()
+    return True
+
+
+def _aguardar_fechamento(progresso: ProgressoVigas) -> None:
+    if progresso.cancelado:
+        progresso.fechar()
+        return
+
+    try:
+        progresso.wait_window()
+    except tk.TclError:
+        pass
+    finally:
+        progresso.fechar()
+
+
 def processar_todas_vigas():
     progresso = ProgressoVigas()
 
@@ -377,41 +468,51 @@ def processar_todas_vigas():
             detalhe="Clique em Selecionar e escolha a pasta raíz do edifício a ser dimensionado.",
         )
         if not ok:
+            if _abortar_se_cancelado(progresso):
+                return
             progresso.erro("Operação cancelada pelo usuário.")
-            progresso.wait_window()
+            _aguardar_fechamento(progresso)
             return
         root_dir_para_exportacao = get_root_directory()
         if not root_dir_para_exportacao:
+            if _abortar_se_cancelado(progresso):
+                return
             progresso.erro("Operação cancelada pelo usuário.")
-            progresso.mainloop() if hasattr(progresso, "_root_owner") and progresso._root_owner else progresso.wait_window()
+            _aguardar_fechamento(progresso)
             return
 
         try:
             os.chdir(root_dir_para_exportacao)
         except OSError as exc:
             progresso.erro(f"Não foi possível acessar a pasta: {exc}")
-            progresso.wait_window()
+            _aguardar_fechamento(progresso)
             return
 
         nprjpv, nprjed, nombde, nomedi, nompav, istat = TQSBuild.BuildingContext()
         if istat != 0:
             progresso.erro("A pasta selecionada não é um edifício TQS válido.")
-            progresso.wait_window()
+            _aguardar_fechamento(progresso)
             return
     else:
         root_dir_para_exportacao = os.getcwd()
 
     progresso.set_etapa(f"Edifício: {nomedi}")
     progresso.set_detalhe("Preparando fila de processamento das vigas...")
+    if _abortar_se_cancelado(progresso):
+        return
 
     files_preview = find_relger_files(root_dir_para_exportacao)
     total_pavimentos = len(files_preview) if files_preview else "?"
 
     progresso.set_etapa("Executando dimensionamento (abra EDITW para detalhes)...")
     progresso.set_detalhe(f"{total_pavimentos} pavimento(s) detectado(s). Aguarde o TQS processar...")
+    if _abortar_se_cancelado(progresso):
+        return
     progresso._progress.configure(mode="indeterminate")
     progresso._progress.start(15)
     progresso.update()
+    if _abortar_se_cancelado(progresso):
+        return
 
     job = TQSExec.Job()
     tarefa_pasta = TQSExec.TaskFolder(nomedi, TQSExec.TaskFolder.FOLDER_FRAMES)
@@ -430,6 +531,9 @@ def processar_todas_vigas():
     job.EnterTask(tarefa_vigas)
     job.Execute()
 
+    if _abortar_se_cancelado(progresso):
+        return
+
     progresso._progress.stop()
     progresso._progress.configure(mode="determinate")
     progresso._progress["value"] = 50
@@ -437,7 +541,7 @@ def processar_todas_vigas():
     files = find_relger_files(root_dir_para_exportacao)
     if not files:
         progresso.erro("Nenhum RELGER.LST encontrado após o processamento.")
-        progresso.wait_window()
+        _aguardar_fechamento(progresso)
         return
 
     ok = progresso.aguardar_selecao(
@@ -445,24 +549,30 @@ def processar_todas_vigas():
         detalhe=f"{len(files)} arquivo(s) encontrado(s). Clique em Selecionar e escolha onde salvar os LSTs.",
     )
     if not ok:
+        if _abortar_se_cancelado(progresso):
+            return
         progresso.erro("Destino não selecionado. Operação cancelada.")
-        progresso.wait_window()
+        _aguardar_fechamento(progresso)
         return
 
     destination = select_destination()
     if not destination:
+        if _abortar_se_cancelado(progresso):
+            return
         progresso.erro("Destino não selecionado. Operação cancelada.")
-        progresso.wait_window()
+        _aguardar_fechamento(progresso)
         return
 
     if not os.path.isdir(destination):
         progresso.erro("Pasta de destino inválida.")
-        progresso.wait_window()
+        _aguardar_fechamento(progresso)
         return
 
     progresso.set_etapa("Copiando e renomeando arquivos...")
     total = len(files)
     for i, record in enumerate(files, start=1):
+        if _abortar_se_cancelado(progresso):
+            return
         folder_name = record["folder_name"].strip()
         filename = f"Vigas {folder_name}.LST"
         destination_path = os.path.join(destination, filename)
@@ -470,7 +580,7 @@ def processar_todas_vigas():
         progresso.set_progresso(i, total, folder_name)
 
     progresso.finalizar(f"Concluído! {total} arquivo(s) exportado(s) para:\n{destination}")
-    progresso.wait_window()
+    _aguardar_fechamento(progresso)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 ACTIVITIES_URL = os.getenv("SISTEMA_ATIVIDADES_URL", "")
 BEIRAL_STREAMLIT_PORT = 8507
-BEIRAL_STREAMLIT_URL = f"http://localhost:{BEIRAL_STREAMLIT_PORT}"
+ESCADA_STREAMLIT_PORT = 8508
 APP_USER_MODEL_ID = "FormulaEngenharia.ScriptsFormula"
 APP_ICON_RELATIVE_PATH = Path("assets") / "imgs" / "engenharia_formula_logo.ico"
 
@@ -50,6 +50,11 @@ _ABOUT_TEXTS = {
         "Informe a geometria da laje, as cargas permanentes e acidentais e os elementos de borda "
         "(nervura e guarda-corpo). O sistema calcula os momentos, aplica o majorador normativo "
         "(NBR 6118) e gera um memorial de cálculo em PDF pronto para entrega."
+    ),
+    "Calculo de Escadas": (
+        "Abre uma interface web (Streamlit) para estudo de carregamentos e memorial de escadas.\n\n"
+        "Permite configurar lances, patamares, apoios e propriedades do edifício, visualizar "
+        "o esquema da escada e exportar a memória de cálculo em Markdown ou PDF."
     ),
     "Auditoria ARMPIL": (
         "Abre a planilha Excel de auditoria do ARMPIL.\n\n"
@@ -406,6 +411,7 @@ class ScriptLauncherApp(tk.Tk):
         nav_defs = [
             ("Dimensionar Vigas", "vigas", self._run_detalhes_viga),
             ("Cálculo de Beiral", "beiral", self._run_calc_beiral),
+            ("Calculo de Escadas", "escadas", self._run_calculo_escadas),
             ("Auditoria ARMPIL", "auditoria", self._open_auditoria_armpil),
         ]
         for label_text, key, action in nav_defs:
@@ -524,6 +530,15 @@ class ScriptLauncherApp(tk.Tk):
             action=self._run_calc_beiral,
             btn_style="Secondary.TButton",
             about_key="Calculo de Beiral",
+        )
+
+        self._build_tool_card(
+            parent=content, key="escadas",
+            title="Calculo de Escadas",
+            description="Aplicacao web para modelagem de lances, patamares, apoios e memoria de calculo.",
+            action=self._run_calculo_escadas,
+            btn_style="Secondary.TButton",
+            about_key="Calculo de Escadas",
         )
 
         self._build_tool_card(
@@ -846,21 +861,27 @@ class ScriptLauncherApp(tk.Tk):
 
         self.after(300, lambda: self._wait_for_streamlit(process, loading, url, deadline))
 
-    def _run_calc_beiral(self) -> None:
-        if self._streamlit_is_ready(BEIRAL_STREAMLIT_URL):
-            webbrowser.open_new_tab(BEIRAL_STREAMLIT_URL)
+    def _run_streamlit_tool(
+        self,
+        script_name: str,
+        port: int,
+        loading_title: str,
+    ) -> None:
+        url = f"http://localhost:{port}"
+        if self._streamlit_is_ready(url):
+            webbrowser.open_new_tab(url)
             return
 
         python_cmd = self._python_command(prefer_console=True)
         if not python_cmd:
             return
 
-        script_path = self._resolve_file("calc_beiral.py")
+        script_path = self._resolve_file(script_name)
         if not script_path:
             roots_txt = "\n".join(str(p) for p in self._candidate_roots())
             messagebox.showerror(
                 "Arquivo nao encontrado",
-                f"Nao foi encontrado: calc_beiral.py\n\nPastas verificadas:\n{roots_txt}",
+                f"Nao foi encontrado: {script_name}\n\nPastas verificadas:\n{roots_txt}",
             )
             return
 
@@ -880,14 +901,14 @@ class ScriptLauncherApp(tk.Tk):
             "--server.address",
             "localhost",
             "--server.port",
-            str(BEIRAL_STREAMLIT_PORT),
+            str(port),
             "--logger.level",
             "error",
         ]
 
         loading = LoadingDialog(
             self,
-            "Abrindo Calculo de Beiral",
+            loading_title,
             "Iniciando a interface web. Assim que o servidor responder, o navegador sera aberto.",
         )
 
@@ -895,14 +916,28 @@ class ScriptLauncherApp(tk.Tk):
             process = self._run_silent_process(
                 command,
                 script_path.parent,
-                "calc_beiral.py",
+                script_name,
                 capture_log=True,
                 on_failed=loading.close,
             )
-            self._wait_for_streamlit(process, loading, BEIRAL_STREAMLIT_URL, time.monotonic() + 30)
+            self._wait_for_streamlit(process, loading, url, time.monotonic() + 30)
         except Exception as exc:
             loading.close()
-            messagebox.showerror("Erro ao executar", f"Falha ao abrir calc_beiral.py:\n{exc}")
+            messagebox.showerror("Erro ao executar", f"Falha ao abrir {script_name}:\n{exc}")
+
+    def _run_calc_beiral(self) -> None:
+        self._run_streamlit_tool(
+            script_name="beiral/app.py",
+            port=BEIRAL_STREAMLIT_PORT,
+            loading_title="Abrindo Calculo de Beiral",
+        )
+
+    def _run_calculo_escadas(self) -> None:
+        self._run_streamlit_tool(
+            script_name="escada/app.py",
+            port=ESCADA_STREAMLIT_PORT,
+            loading_title="Abrindo Calculo de Escadas",
+        )
 
     def _read_registry_dword(self, root, subkey: str, value_name: str) -> int | None:
         if winreg is None:

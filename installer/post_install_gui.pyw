@@ -26,7 +26,7 @@ APP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 STEPS = [
     ("Atualizando pip...",                  ["-m", "pip", "install", "--upgrade", "pip"]),
     ("Instalando dependências principais...", ["-m", "pip", "install", "--upgrade",
-                                              "xlsxwriter", "pillow", "streamlit", "fpdf2"]),
+                                              "xlsxwriter", "pillow", "streamlit==1.56.0", "fpdf2", "matplotlib"]),
     ("Instalando PyMuPDF...",               ["-m", "pip", "install", "--only-binary=:all:", "PyMuPDF"]),
     ("Copiando arquivos para o TQS...",     [os.path.join(APP_ROOT, "src", "install_tqs_files.py")]),
 ]

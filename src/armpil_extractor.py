@@ -47,6 +47,7 @@ DIVISION_LINE_TOL_Y = 28.0
 VERTICAL_LINE_TOL_X = 1.2
 HORIZONTAL_LINE_TOL_Y = 1.2
 SAME_LANCE_LEVEL_TOL = 1.0
+TITLE_ROW_TOL_Y = 70.0
 
 # Historical defaults for recurring jobs. The user can confirm or override
 # them in the level mapping dialog before the CSV is generated.
@@ -256,7 +257,7 @@ def group_by_y(spans: list[dict], tol: float = 6) -> list[list[dict]]:
     return rows
 
 
-def attach_box_bounds(boxes: list[dict], tol: float = 40) -> None:
+def attach_box_bounds(boxes: list[dict], tol: float = TITLE_ROW_TOL_Y) -> None:
     rows: list[list[dict]] = []
     for box in sorted(boxes, key=lambda item: item["cy"]):
         for row in rows:
@@ -383,26 +384,47 @@ def assign_levels(spans: list[dict], boxes: list[dict]) -> None:
 
     for box in boxes:
         y_lo = box["cy"] - 50
-        y_hi = box["cy"] + 650
-        nearby = [
+        base_y_hi = box["cy"] + 650
+        base_nearby = [
             level
             for level in level_spans
-            if box["x_left"] <= level["x"] <= box["x_right"] and y_lo <= level["y"] <= y_hi
+            if box["x_left"] <= level["x"] <= box["x_right"] and y_lo <= level["y"] <= base_y_hi
         ]
 
-        if nearby:
-            y_hi = max(y_hi, max(level["y"] for level in nearby) + LOWEST_LEVEL_EXTRA_Y + 80.0)
+        nearby = base_nearby
+        if base_nearby:
+            y_hi = max(base_y_hi, max(level["y"] for level in base_nearby) + LOWEST_LEVEL_EXTRA_Y + 80.0)
+            base_keys = {
+                (round(level["val"], 2), round(level["x"], 2), round(level["y"], 2))
+                for level in base_nearby
+            }
             nearby = [
-                level
+                {
+                    "val": level["val"],
+                    "x": level["x"],
+                    "y": level["y"],
+                    "base_rank": 0
+                    if (round(level["val"], 2), round(level["x"], 2), round(level["y"], 2))
+                    in base_keys
+                    else 1,
+                }
                 for level in level_spans
                 if box["x_left"] <= level["x"] <= box["x_right"] and y_lo <= level["y"] <= y_hi
             ]
 
         seen: dict[float, dict] = {}
-        for level in sorted(nearby, key=lambda item: (item["val"], abs(item["x"] - box["cx"]))):
+        for level in sorted(
+            nearby,
+            key=lambda item: (
+                item["val"],
+                item.get("base_rank", 0),
+                abs(item["x"] - box["cx"]),
+                item["y"],
+            ),
+        ):
             key = round(level["val"], 2)
             if key not in seen:
-                seen[key] = level
+                seen[key] = {"val": level["val"], "x": level["x"], "y": level["y"]}
 
         box["levels"] = sorted(seen.values(), key=lambda item: item["y"], reverse=True)
 
@@ -920,8 +942,6 @@ def main() -> None:
     spans = get_spans(page)
     vertical_lines, horizontal_lines = get_drawing_lines(page)
     boxes = find_boxes(spans)
-    assign_levels(spans, boxes)
-    refine_box_bounds_by_level_rows(boxes)
     assign_levels(spans, boxes)
     attach_level_division_lines(boxes, horizontal_lines)
     doc.close()
