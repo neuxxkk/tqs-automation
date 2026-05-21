@@ -153,6 +153,7 @@ Public Sub SortSheetRangeByPilarLance(ByVal ws As Worksheet, ByVal rowStart As L
     If rowEnd < rowStart Then Exit Sub
 
     Dim rowCount As Long
+    Dim helperRange As Range
     rowCount = rowEnd - rowStart + 1
     If rowCount <= 1 Then Exit Sub
 
@@ -169,7 +170,9 @@ Public Sub SortSheetRangeByPilarLance(ByVal ws As Worksheet, ByVal rowStart As L
         helperData(i, 3) = GetPilarSuffix(CStr(GetArrayCell(src, i, 1)))
     Next i
 
-    ws.Range(ws.Cells(rowStart, helperStartCol), ws.Cells(rowEnd, helperStartCol + 2)).Value2 = helperData
+    Set helperRange = ws.Range(ws.Cells(rowStart, helperStartCol), ws.Cells(rowEnd, helperStartCol + 2))
+    helperRange.EntireColumn.Hidden = False
+    helperRange.Value2 = helperData
 
     With ws.Sort
         .SortFields.Clear
@@ -184,7 +187,8 @@ Public Sub SortSheetRangeByPilarLance(ByVal ws As Worksheet, ByVal rowStart As L
         .Apply
     End With
 
-    ws.Range(ws.Cells(rowStart, helperStartCol), ws.Cells(rowEnd, helperStartCol + 2)).ClearContents
+    helperRange.ClearContents
+    helperRange.EntireColumn.Hidden = True
 End Sub
 
 Public Sub ApplySeleFormatting(ByVal ws As Worksheet, ByVal rowStart As Long, ByVal rowEnd As Long)
@@ -205,4 +209,101 @@ Public Sub ApplySeleFormatting(ByVal ws As Worksheet, ByVal rowStart As Long, By
     ws.Rows(rowStart & ":" & rowEnd).RowHeight = 16
 
     ApplyPilarBlockColors ws, rowStart, rowEnd, 2, 2, 5
+End Sub
+
+Public Sub FormatResultadoHeaderRow(ByVal ws As Worksheet)
+    Dim headerRg As Range
+    Set headerRg = ws.Range("B8:J8")
+
+    With headerRg
+        .Font.Name = "Segoe UI"
+        .Font.Size = 9
+        .Font.Bold = True
+        .Font.Color = RGB(52, 73, 94)
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+        .Interior.Color = RGB(239, 242, 247)
+        .Borders.LineStyle = xlContinuous
+        .Borders.Color = RGB(189, 195, 208)
+    End With
+
+    HighlightResultadoColumnGroup ws.Range("B8:C8"), RGB(221, 235, 247), RGB(91, 155, 213)
+    HighlightResultadoColumnGroup ws.Range("E8:F8"), RGB(221, 235, 247), RGB(91, 155, 213)
+End Sub
+
+Public Sub HighlightResultadoColumnGroup(ByVal target As Range, ByVal fillColor As Long, ByVal borderColor As Long)
+    With target
+        .Interior.Color = fillColor
+        .Font.Bold = True
+    End With
+
+    With target.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .Weight = xlMedium
+        .Color = borderColor
+    End With
+
+    With target.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .Weight = xlMedium
+        .Color = borderColor
+    End With
+
+    With target.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .Weight = xlMedium
+        .Color = borderColor
+    End With
+
+    With target.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .Weight = xlMedium
+        .Color = borderColor
+    End With
+End Sub
+
+Public Sub ApplyResultadoKeyColumnEmphasis(ByVal ws As Worksheet, ByVal rowStart As Long, ByVal rowEnd As Long)
+    If rowEnd < rowStart Then Exit Sub
+
+    Dim emphasisRg As Range
+    Set emphasisRg = Union( _
+        ws.Range(ws.Cells(rowStart, 2), ws.Cells(rowEnd, 3)), _
+        ws.Range(ws.Cells(rowStart, 5), ws.Cells(rowEnd, 6)) _
+    )
+
+    With emphasisRg
+        .Font.Bold = True
+        .Font.Color = RGB(33, 37, 41)
+    End With
+
+    HighlightResultadoColumnGroup ws.Range(ws.Cells(rowStart, 2), ws.Cells(rowEnd, 3)), RGB(255, 255, 255), RGB(146, 168, 190)
+    HighlightResultadoColumnGroup ws.Range(ws.Cells(rowStart, 5), ws.Cells(rowEnd, 6)), RGB(255, 255, 255), RGB(146, 168, 190)
+End Sub
+
+Public Sub ApplyResultadoPilarBlockSeparators(ByVal ws As Worksheet, ByVal rowStart As Long, ByVal rowEnd As Long, ByVal pilarCol As Long, ByVal colStart As Long, ByVal colEnd As Long)
+    Dim previousPilar As String
+    Dim currentPilar As String
+    Dim i As Long
+    Dim borderWeight As XlBorderWeight
+
+    If rowEnd < rowStart Then Exit Sub
+
+    previousPilar = ""
+
+    For i = rowStart To rowEnd
+        currentPilar = NormalizePilarName(CStr(ws.Cells(i, pilarCol).Value2))
+
+        If i = rowStart Or currentPilar <> previousPilar Then
+            borderWeight = xlMedium
+            If i = rowStart Then borderWeight = xlThick
+
+            With ws.Range(ws.Cells(i, colStart), ws.Cells(i, colEnd)).Borders(xlEdgeTop)
+                .LineStyle = xlContinuous
+                .Weight = borderWeight
+                .Color = RGB(90, 106, 133)
+            End With
+        End If
+
+        previousPilar = currentPilar
+    Next i
 End Sub

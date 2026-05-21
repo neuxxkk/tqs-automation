@@ -93,9 +93,9 @@ Public Function CompareAndMark(Optional ByVal showSuccessMessage As Boolean = Tr
         End If
 
         .Range(.Cells(firstResRow, 9), .Cells(lastResRow, 9)).FormulaR1C1 = _
-            "=IF(OR(RC[-2]="""",RC[-1]=""""),"""",RC[-2]-RC[-1])"
+            "=IF(OR(RC[-2]="""",RC[-1]=""""),"""",IF(AND(ISNUMBER(RC[-2]),ISNUMBER(RC[-1])),RC[-2]-RC[-1],""""))"
         .Range(.Cells(firstResRow, 10), .Cells(lastResRow, 10)).FormulaR1C1 = _
-            "=IF(OR(RC[-3]="""",RC[-2]=""""),""SEM MATCH"",IF(RC[-3]>=RC[-2],""APROVADO"",IF(RC[-3]*1.15>=RC[-2],""MARGEM 15%"",""REPROVADO"")))"
+            "=IF(OR(RC[-3]="""",RC[-2]=""""),""SEM MATCH"",IF(NOT(ISNUMBER(RC[-2])),""NAO DIMENSIONADO"",IF(RC[-3]>=RC[-2],""APROVADO"",IF(RC[-3]*1.15>=RC[-2],""MARGEM 15%"",""REPROVADO""))))"
         .Range(.Cells(firstResRow, 4), .Cells(lastResRow, 10)).Calculate
     End With
 
@@ -105,6 +105,8 @@ Public Function CompareAndMark(Optional ByVal showSuccessMessage As Boolean = Tr
     FormatResultadoRange wsRes, firstResRow, lastResRow
     AtualizarResumoResultado wsRes, lastResRow
     ConfigurarFormatacaoCondicionalResultado wsRes, lastResRow
+    InicializarFiltrosResultado False
+    ReaplicarFiltrosResultado
     CompareAndMark = True
 
     If showSuccessMessage Then
@@ -142,18 +144,22 @@ Public Sub ClearResultsPermanent(ByVal ws As Worksheet)
     lr = ws.Cells(ws.Rows.count, 2).End(xlUp).Row
 
     PrepararCabecalhoResultado ws
+    FormatResultadoHeaderRow ws
 
     If lr >= 9 Then
-        ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).ClearContents
+        ws.Range(ws.Cells(9, 2), ws.Cells(lr, 13)).ClearContents
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Interior.Color = RGB(247, 248, 252)
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Font.Color = RGB(44, 62, 80)
+        ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Borders.LineStyle = xlNone
     End If
 
     ws.Range(ws.Cells(6, 2), ws.Cells(6, 7)).Value = "--"
+    InicializarFiltrosResultado False
+    ReaplicarFiltrosResultado
 End Sub
 
 Public Sub PrepararCabecalhoResultado(ByVal ws As Worksheet)
-    With ws.Range("B1:J7")
+    With ws.Range("B1:J2")
         .UnMerge
         .ClearContents
         .Interior.Pattern = xlNone
@@ -206,7 +212,8 @@ Public Sub PrepararCabecalhoResultado(ByVal ws As Worksheet)
         .Borders.Color = RGB(180, 178, 169)
     End With
 
-    ws.Rows("1:7").RowHeight = 20
+    ws.Rows("1:2").RowHeight = 20
+    ws.Rows("5:7").RowHeight = 20
     ws.Rows(1).RowHeight = 28
 End Sub
 
@@ -216,11 +223,17 @@ Public Sub FormatResultadoRange(ByVal ws As Worksheet, ByVal rowStart As Long, B
     Dim rg As Range
     Set rg = ws.Range(ws.Cells(rowStart, 2), ws.Cells(rowEnd, 10))
 
+    FormatResultadoHeaderRow ws
+
     With rg
         .Font.Name = "Segoe UI"
         .Font.Size = 9
+        .Font.Color = RGB(44, 62, 80)
         .HorizontalAlignment = xlCenter
         .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlNone
+        .Borders(xlInsideHorizontal).LineStyle = xlContinuous
+        .Borders(xlInsideHorizontal).Color = RGB(222, 226, 232)
         .Borders(xlEdgeBottom).LineStyle = xlContinuous
         .Borders(xlEdgeBottom).Color = RGB(189, 195, 208)
     End With
@@ -230,6 +243,9 @@ Public Sub FormatResultadoRange(ByVal ws As Worksheet, ByVal rowStart As Long, B
     ws.Range(ws.Cells(rowStart, 2), ws.Cells(rowEnd, 2)).Font.Bold = True
     ws.Range(ws.Cells(rowStart, 10), ws.Cells(rowEnd, 10)).Font.Bold = True
     ws.Rows(rowStart & ":" & rowEnd).RowHeight = 20
+
+    ApplyResultadoKeyColumnEmphasis ws, rowStart, rowEnd
+    ApplyResultadoPilarBlockSeparators ws, rowStart, rowEnd, 2, 2, 10
 End Sub
 
 Public Sub AtualizarResumoResultado(ByVal ws As Worksheet, ByVal lastRow As Long)
@@ -274,5 +290,11 @@ Public Sub ConfigurarFormatacaoCondicionalResultado(ByVal ws As Worksheet, ByVal
     With rg.FormatConditions.Add(Type:=xlExpression, Formula1:="=$J9=""SEM MATCH""")
         .Interior.Color = RGB(255, 249, 196)
         .Font.Color = RGB(133, 100, 4)
+    End With
+
+    ' NAO DIMENSIONADO
+    With rg.FormatConditions.Add(Type:=xlExpression, Formula1:="=$J9=""NAO DIMENSIONADO""")
+        .Interior.Color = RGB(255, 243, 224)
+        .Font.Color = RGB(175, 96, 26)
     End With
 End Sub

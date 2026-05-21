@@ -7,7 +7,14 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 SOURCE_DIR = BASE_DIR / "assets" / "tqs"
 TARGET_DIR = Path(r"C:\TQSW\EXEC\PYTHON")
-PIP_DEPENDENCIES = ["xlsxwriter", "pillow", "streamlit==1.56.0", "fpdf2", "matplotlib"]
+PIP_DEPENDENCIES = [
+    "xlsxwriter",
+    "pillow",
+    "streamlit==1.56.0",
+    "fpdf2",
+    "matplotlib",
+    "rapidocr_onnxruntime",
+]
 
 
 def _log(msg: str) -> None:

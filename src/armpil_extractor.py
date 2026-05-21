@@ -5,7 +5,7 @@ armpil_extractor.py - Extracao ARMPIL PDF -> CSV
 Extrai armadura longitudinal de pranchas ARMPIL (TQS/Eberick/AltoQi)
 por leitura posicional de texto vetorial no PDF.
 
-Dependencias: pip install PyMuPDF
+Dependencias: pip install PyMuPDF rapidocr_onnxruntime pillow
 Uso:
     python armpil_extractor.py
     python armpil_extractor.py --discover
@@ -48,6 +48,22 @@ VERTICAL_LINE_TOL_X = 1.2
 HORIZONTAL_LINE_TOL_Y = 1.2
 SAME_LANCE_LEVEL_TOL = 1.0
 TITLE_ROW_TOL_Y = 70.0
+OCR_RENDER_SCALE = 2.5
+OCR_TILE_SIZE = 1800
+OCR_TILE_OVERLAP = 250
+OCR_TITLE_MAX_X_RATIO = 0.82
+OCR_STRUCTURAL_Y_PAD = 1050.0
+OCR_STRUCTURAL_X_PAD = 220.0
+OCR_MIN_STRUCTURAL_TOKENS = 3
+OCR_LOCAL_SCALE = 5.0
+OCR_STRIP_SCALE = 6.0
+OCR_LOCAL_X_PAD_LEFT = 60.0
+OCR_LOCAL_X_PAD_RIGHT = 170.0
+OCR_LOCAL_Y_PAD_BOTTOM = 1150.0
+OCR_BAND_STRIP_X_PAD_LEFT = 5.0
+OCR_BAND_STRIP_X_PAD_RIGHT = 150.0
+OCR_BAND_STRIP_Y_PAD = 10.0
+OCR_LEVEL_ROW_TOL_Y = 18.0
 
 # Historical defaults for recurring jobs. The user can confirm or override
 # them in the level mapping dialog before the CSV is generated.
@@ -55,15 +71,29 @@ DEFAULT_LANCE_MAP: dict[float, int] = {
     1040.25: 0,
     1043.40: 6,
     1046.60: 7,
+    1050.35: 8,
+    1050.95: 8,
+    1051.00: 8,
 }
 
 RE_NIVEL = re.compile(r"^\+?(\d{3,4}[,.]\d{1,2})$")
-RE_PX = re.compile(r"^P(\d+[A-Z]?)$", re.I)
+RE_PX = re.compile(r"^(P[A-Z]*)(\d+)([A-Z]*)$", re.I)
 RE_QTY = re.compile(r"^\d{1,3}$")
 RE_PHI = re.compile(r"^[O\u00D8\u2205\u03A6\u03C6]\s*(\d+[,.]?\d*)$", re.I)
 RE_C_SLASH = re.compile(r"^C/")
-RE_TITLE_PART = re.compile(r"((?:PAF|P)\d+[A-Z]?)(?:\s*\([^)]*\))?", re.I)
-RE_PILAR_SORT = re.compile(r"^(PAF|P)(\d+)([A-Z]*)$", re.I)
+RE_TITLE_PART = re.compile(r"((?:P[A-Z]*)\d+[A-Z]*)(?:\s*\([^)]*\))?", re.I)
+RE_PILAR_SORT = re.compile(r"^(P[A-Z]*)(\d+)([A-Z]*)$", re.I)
+RE_STRUCTURAL_TOKEN = re.compile(
+    r"(?:[O\u00D8\u2205\u03A6\u03C6]\s*\d|C/|C=|FUNDA|LAJE|^N\d+|^\d+\s*[X\u00D7]\s*\d+)",
+    re.I,
+)
+RE_LEVEL_DIGIT = re.compile(r"(\d)\s*A", re.I)
+RE_OCR_LONG_TOKEN = re.compile(
+    r"(\d{1,2}(?:\s*[X\u00D7]\s*\d{1,2})?)\s*[\u00D8\u2205\u03A6\u03C6]\s*(10|12(?:[,.]5)?|16|20|25|32)\b",
+    re.I,
+)
+RE_OCR_COMBINED_LONG = re.compile(r"^(\d{1,2})(10|125|16|20|25|32)$")
+RE_OCR_C_LENGTH = re.compile(r"C\s*[=:\-]?\s*(\d{2,4})", re.I)
 
 
 def norm(text: str) -> float:
@@ -143,20 +173,52 @@ def fmt_num(val: float) -> str:
     return f"{val:.2f}".rstrip("0").rstrip(".")
 
 
-def format_level(level: float) -> str:
+def normalize_level_key(level: float | str) -> str:
+    if isinstance(level, str):
+        text = " ".join(level.replace("_", " ").strip().upper().split())
+        return text
+    return f"{float(level):.2f}"
+
+
+def level_sort_key(level: float | str) -> tuple[int, float, str]:
+    if isinstance(level, str):
+        token = normalize_level_key(level)
+        if token == "FUNDACAO":
+            return (0, 0.0, token)
+        match = RE_LEVEL_DIGIT.search(token)
+        if match:
+            return (1, float(match.group(1)), token)
+        return (2, 0.0, token)
+    return (1, float(level), f"{float(level):.2f}")
+
+
+def sort_level_values(levels: list[float | str]) -> list[float | str]:
+    return sorted(levels, key=level_sort_key)
+
+
+def format_level(level: float | str) -> str:
+    if isinstance(level, str):
+        return normalize_level_key(level)
     return f"+{level:.2f}"
 
 
-def format_level_list(levels: list[float]) -> str:
-    return ",".join(f"{level:.2f}" for level in levels)
+def format_level_list(levels: list[float | str]) -> str:
+    values = []
+    for level in levels:
+        if isinstance(level, str):
+            values.append(normalize_level_key(level))
+        else:
+            values.append(f"{float(level):.2f}")
+    return ",".join(values)
 
 
 def parse_names(text: str) -> list[str]:
-    names = [match.group(1).upper() for match in RE_TITLE_PART.finditer(text)]
+    normalized = unicodedata.normalize("NFKC", text)
+    names = [match.group(1).upper() for match in RE_TITLE_PART.finditer(normalized)]
     return list(dict.fromkeys(names))
 
 
-def pillar_sort_key(name: str) -> tuple[int, int, str, str]:
+def pillar_sort_key(name: str) -> tuple[int, int, str, str, str]:
     text = name.strip().upper()
     match = RE_PILAR_SORT.match(text)
     if not match:
@@ -164,7 +226,7 @@ def pillar_sort_key(name: str) -> tuple[int, int, str, str]:
 
     prefix, number, suffix = match.groups()
     prefix_rank = 0 if prefix.upper() == "P" else 1
-    return (int(number), prefix_rank, suffix or "", text)
+    return (int(number), prefix_rank, prefix, suffix or "", text)
 
 
 def get_spans(page) -> list[dict]:
@@ -196,6 +258,104 @@ def get_spans(page) -> list[dict]:
                     }
                 )
     return spans
+
+
+def dedupe_ocr_spans(spans: list[dict]) -> list[dict]:
+    if not spans:
+        return []
+
+    deduped: list[dict] = []
+    for span in sorted(
+        spans,
+        key=lambda item: (
+            item["t"],
+            round(item["cx"], 1),
+            round(item["cy"], 1),
+            -item.get("score", 0.0),
+        ),
+    ):
+        duplicate = next(
+            (
+                existing
+                for existing in deduped
+                if existing["t"] == span["t"]
+                and abs(existing["cx"] - span["cx"]) <= 8
+                and abs(existing["cy"] - span["cy"]) <= 8
+                and abs(existing["w"] - span["w"]) <= 10
+                and abs((existing["y1"] - existing["y0"]) - (span["y1"] - span["y0"])) <= 10
+            ),
+            None,
+        )
+        if duplicate is None:
+            deduped.append(span)
+            continue
+
+        if span.get("score", 0.0) > duplicate.get("score", 0.0):
+            duplicate.update(span)
+
+    return deduped
+
+
+def get_ocr_spans(page) -> list[dict]:
+    try:
+        import numpy as np
+        from PIL import Image
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError:
+        return []
+
+    pix = page.get_pixmap(matrix=fitz.Matrix(OCR_RENDER_SCALE, OCR_RENDER_SCALE), alpha=False)
+    image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    page_width = float(page.rect.width)
+    page_height = float(page.rect.height)
+
+    tile_step = max(1, OCR_TILE_SIZE - OCR_TILE_OVERLAP)
+    detector = RapidOCR()
+    spans: list[dict] = []
+
+    for top in range(0, image.height, tile_step):
+        for left in range(0, image.width, tile_step):
+            crop = image.crop((left, top, min(left + OCR_TILE_SIZE, image.width), min(top + OCR_TILE_SIZE, image.height)))
+            result, _ = detector(np.array(crop))
+            if not result:
+                continue
+
+            for box, text, score in result:
+                normalized = unicodedata.normalize("NFKC", text).strip()
+                if not normalized:
+                    continue
+
+                xs = [point[0] for point in box]
+                ys = [point[1] for point in box]
+                x0 = (min(xs) + left) / OCR_RENDER_SCALE
+                x1 = (max(xs) + left) / OCR_RENDER_SCALE
+                y0 = (min(ys) + top) / OCR_RENDER_SCALE
+                y1 = (max(ys) + top) / OCR_RENDER_SCALE
+                x0 = max(0.0, min(x0, page_width))
+                x1 = max(0.0, min(x1, page_width))
+                y0 = max(0.0, min(y0, page_height))
+                y1 = max(0.0, min(y1, page_height))
+                if x1 <= x0 or y1 <= y0:
+                    continue
+
+                spans.append(
+                    {
+                        "t": normalized,
+                        "x0": x0,
+                        "y0": y0,
+                        "x1": x1,
+                        "y1": y1,
+                        "w": x1 - x0,
+                        "cx": (x0 + x1) / 2,
+                        "cy": (y0 + y1) / 2,
+                        "sz": y1 - y0,
+                        "ang": 0.0,
+                        "ocr": True,
+                        "score": float(score),
+                    }
+                )
+
+    return dedupe_ocr_spans(spans)
 
 
 def get_drawing_lines(page) -> tuple[list[dict], list[dict]]:
@@ -348,23 +508,49 @@ def merge_title_candidates(candidates: list[dict]) -> list[dict]:
                 "x0": group["x0"],
                 "x1": group["x1"],
                 "w": group["w"],
+                "ocr": any(part.get("ocr") for part in parts),
             }
         )
     return boxes
 
 
+def box_has_structural_context(box: dict, spans: list[dict]) -> bool:
+    if not box.get("ocr"):
+        return True
+
+    page_width = max((span["x1"] for span in spans), default=0.0)
+    if page_width and box["cx"] > page_width * OCR_TITLE_MAX_X_RATIO:
+        return False
+
+    matches = [
+        span
+        for span in spans
+        if box["x0"] - OCR_STRUCTURAL_X_PAD <= span["cx"] <= box["x1"] + OCR_STRUCTURAL_X_PAD
+        and box["cy"] + 10 <= span["cy"] <= box["cy"] + OCR_STRUCTURAL_Y_PAD
+        and RE_STRUCTURAL_TOKEN.search(span["t"])
+    ]
+    return len(matches) >= OCR_MIN_STRUCTURAL_TOKENS
+
+
 def find_boxes(spans: list[dict]) -> list[dict]:
     candidates = []
     for span in spans:
-        if abs(span["sz"] - 15.5) > 1.2:
-            continue
+        if span.get("ocr"):
+            if not parse_names(span["t"]):
+                continue
+        else:
+            if abs(span["sz"] - 15.5) > 1.2:
+                continue
+            if abs(span["ang"]) > 5:
+                continue
+            if not parse_names(span["t"]):
+                continue
         if abs(span["ang"]) > 5:
-            continue
-        if not parse_names(span["t"]):
             continue
         candidates.append(span)
 
     boxes = merge_title_candidates(candidates)
+    boxes = [box for box in boxes if box_has_structural_context(box, spans)]
     boxes.sort(key=lambda box: (round(box["cy"] / 50) * 50, box["cx"]))
     attach_box_bounds(boxes)
     return boxes
@@ -373,7 +559,7 @@ def find_boxes(spans: list[dict]) -> list[dict]:
 def assign_levels(spans: list[dict], boxes: list[dict]) -> None:
     level_spans = []
     for span in spans:
-        if abs(span["sz"] - 11.7) > 0.8:
+        if not span.get("ocr") and abs(span["sz"] - 11.7) > 0.8:
             continue
         if abs(span["ang"]) > 5:
             continue
@@ -508,38 +694,58 @@ def attach_level_division_lines(boxes: list[dict], horizontal_lines: list[dict])
                 level["line_y"] = level["y"]
 
 
-def collect_unique_levels(boxes: list[dict]) -> list[float]:
-    values = {round(level["val"], 2) for box in boxes for level in box.get("levels", [])}
-    return sorted(values)
+def collect_unique_levels(boxes: list[dict]) -> list[float | str]:
+    values: dict[str, float | str] = {}
+    for box in boxes:
+        for level in box.get("levels", []):
+            key = normalize_level_key(level["val"])
+            values.setdefault(key, level["val"])
+    return sort_level_values(list(values.values()))
 
 
-def collect_assignable_levels(boxes: list[dict], spans: list[dict], vertical_lines: list[dict] | None = None) -> list[float]:
+def collect_assignable_levels(
+    boxes: list[dict],
+    spans: list[dict],
+    vertical_lines: list[dict] | None = None,
+) -> list[float | str]:
+    named_levels: dict[str, float | str] = {}
+    for box in boxes:
+        for level_name, _qty, _diam, _source, _confirmed in box.get("_named_longitudinal_entries", []):
+            for level in box.get("levels", []):
+                if normalize_level_key(level["val"]) == normalize_level_key(level_name):
+                    named_levels.setdefault(normalize_level_key(level_name), level["val"])
+                    break
+    if named_levels:
+        return sort_level_values(list(named_levels.values()))
+
     levels = collect_unique_levels(boxes)
-    probe_map = {level: index for index, level in enumerate(levels, start=1)}
+    probe_map = {normalize_level_key(level): index for index, level in enumerate(levels, start=1)}
     level_by_probe = {index: level for level, index in probe_map.items()}
 
-    values: set[float] = set()
+    values: dict[str, float | str] = {}
     for box in boxes:
         for lance, _qty, _diam, _source, _confirmed in extract_long_bars(spans, box, probe_map, vertical_lines):
             if lance in level_by_probe:
-                values.add(level_by_probe[lance])
+                level_value = level_by_probe[lance]
+                values[normalize_level_key(level_value)] = level_value
 
-    return sorted(values)
+    return sort_level_values(list(values.values()))
 
 
-def parse_env_lance_map() -> dict[float, int]:
+def parse_env_lance_map() -> dict[str, int]:
     raw = os.environ.get("ARMPIL_LANCE_MAP", "").strip()
     if not raw:
         return {}
 
-    mapping: dict[float, int] = {}
+    mapping: dict[str, int] = {}
     for chunk in re.split(r"[;\n]+", raw):
         chunk = chunk.strip()
         if not chunk or "=" not in chunk:
             continue
         level_text, lance_text = chunk.split("=", 1)
         try:
-            mapping[round(norm(level_text), 2)] = int(lance_text.strip())
+            normalized = normalize_level_key(level_text if not re.fullmatch(r"\+?\d+[,.]?\d*", level_text.strip()) else norm(level_text))
+            mapping[normalized] = int(lance_text.strip())
         except ValueError:
             continue
     return mapping
@@ -570,36 +776,65 @@ def align_known_lances_to_levels(known_lances: list[int], level_count: int) -> l
     return known_lances[-level_count:]
 
 
-def build_default_lance_map(levels: list[float]) -> dict[float, int]:
+def get_default_lance_for_level(level: float | str) -> int | None:
+    numeric_level: float | None
+
+    if isinstance(level, str):
+        text = level.strip()
+        if not re.fullmatch(r"\+?\d+[,.]?\d*", text):
+            return None
+        try:
+            numeric_level = norm(text)
+        except ValueError:
+            return None
+    else:
+        numeric_level = float(level)
+
+    return DEFAULT_LANCE_MAP.get(numeric_level)
+
+
+def build_default_lance_map(levels: list[float | str]) -> dict[str, int]:
     env_map = parse_env_lance_map()
     if env_map:
-        return {level: env_map[level] for level in levels if level in env_map}
+        return {
+            normalize_level_key(level): env_map[normalize_level_key(level)]
+            for level in levels
+            if normalize_level_key(level) in env_map
+        }
 
-    ordered_levels = sorted(levels)
+    ordered_levels = sort_level_values(levels)
     known_lances = read_known_lances_from_env()
     aligned_lances = align_known_lances_to_levels(known_lances, len(ordered_levels))
     if aligned_lances:
-        mapping = {level: lance for level, lance in zip(ordered_levels, aligned_lances)}
+        mapping = {normalize_level_key(level): lance for level, lance in zip(ordered_levels, aligned_lances)}
         if len(aligned_lances) == len(ordered_levels):
             return mapping
 
         last_level = ordered_levels[len(aligned_lances) - 1]
         trailing_levels = ordered_levels[len(aligned_lances) :]
-        if trailing_levels and all(level - last_level <= SAME_LANCE_LEVEL_TOL for level in trailing_levels):
+        if trailing_levels and not isinstance(last_level, str) and all(
+            not isinstance(level, str) and level - last_level <= SAME_LANCE_LEVEL_TOL
+            for level in trailing_levels
+        ):
             for level in trailing_levels:
-                mapping[level] = aligned_lances[-1]
+                mapping[normalize_level_key(level)] = aligned_lances[-1]
             return mapping
 
-    return {level: DEFAULT_LANCE_MAP[level] for level in levels if level in DEFAULT_LANCE_MAP}
+    mapping: dict[str, int] = {}
+    for level in levels:
+        lance = get_default_lance_for_level(level)
+        if lance is not None:
+            mapping[normalize_level_key(level)] = lance
+    return mapping
 
 
-def has_complete_lance_map(levels: list[float], mapping: dict[float, int]) -> bool:
-    return bool(levels) and all(level in mapping for level in levels)
+def has_complete_lance_map(levels: list[float | str], mapping: dict[str, int]) -> bool:
+    return bool(levels) and all(normalize_level_key(level) in mapping for level in levels)
 
 
-def request_lance_map(levels: list[float]) -> dict[float, int]:
+def request_lance_map(levels: list[float | str]) -> dict[str, int]:
     suggestions = build_default_lance_map(levels)
-    result: dict[float, int] = {}
+    result: dict[str, int] = {}
     cancelled = False
 
     root = tk.Tk()
@@ -638,7 +873,8 @@ def request_lance_map(levels: list[float]) -> dict[float, int]:
 
         ttk.Label(container, text=format_level(level), width=12).grid(row=row_index, column=0, sticky="w", padx=(0, 8))
         ttk.Label(container, text=context, width=24).grid(row=row_index, column=1, sticky="w", padx=(0, 8))
-        default_value = "" if level not in suggestions else str(suggestions[level])
+        level_key = normalize_level_key(level)
+        default_value = "" if level_key not in suggestions else str(suggestions[level_key])
         var = tk.StringVar(value=default_value)
         ttk.Entry(container, width=10, textvariable=var).grid(row=row_index, column=2, sticky="w")
         entry_vars[level] = var
@@ -646,13 +882,13 @@ def request_lance_map(levels: list[float]) -> dict[float, int]:
     button_row = len(levels) + 3
 
     def submit() -> None:
-        pending: dict[float, int] = {}
+        pending: dict[str, int] = {}
         for level, var in entry_vars.items():
             text = var.get().strip()
             if not text:
                 continue
             try:
-                pending[level] = int(text)
+                pending[normalize_level_key(level)] = int(text)
             except ValueError:
                 messagebox.showerror(
                     "Valor invalido",
@@ -694,6 +930,109 @@ def normalize_longitudinal_diameter(diam: float) -> float:
     return min(ALLOWED_LONGITUDINAL_DIAMETERS, key=lambda allowed: (abs(allowed - diam), allowed))
 
 
+def parse_ocr_qty_token(text: str) -> int | None:
+    cleaned = text.replace(" ", "").replace("\u00D7", "x").replace("X", "x")
+    if not cleaned:
+        return None
+    if "x" in cleaned:
+        left, right = cleaned.split("x", 1)
+        if left.isdigit() and right.isdigit():
+            return int(left) * int(right)
+    digits = re.sub(r"\D", "", cleaned)
+    if not digits:
+        return None
+    return int(digits)
+
+
+def normalize_ocr_text(text: str) -> str:
+    cleaned = unicodedata.normalize("NFKC", text).upper()
+    cleaned = cleaned.replace("Ø", "Φ").replace("∅", "Φ").replace("O", "O")
+    cleaned = cleaned.replace("¥", "Φ").replace("$", "Φ").replace("¢", "Φ")
+    cleaned = cleaned.replace("?", "Φ")
+    cleaned = " ".join(cleaned.split())
+    return cleaned
+
+
+def extract_long_matches_from_text(text: str) -> list[tuple[int, float]]:
+    matches: list[tuple[int, float]] = []
+    normalized = normalize_ocr_text(text)
+
+    for qty_text, diam_text in RE_OCR_LONG_TOKEN.findall(normalized):
+        qty = parse_ocr_qty_token(qty_text)
+        if qty is None:
+            continue
+        diam = float(diam_text.replace(",", "."))
+        if diam >= BITOLA_MIN_LONG:
+            matches.append((qty, diam))
+
+    compact = normalized.replace(" ", "")
+    combined = RE_OCR_COMBINED_LONG.match(compact)
+    if combined:
+        qty = int(combined.group(1))
+        diam_code = combined.group(2)
+        diam = 12.5 if diam_code == "125" else float(diam_code)
+        if diam >= BITOLA_MIN_LONG:
+            matches.append((qty, diam))
+
+    return matches
+
+
+def get_crop_ocr_lines(page, clip: fitz.Rect, scale: float, rotate_degrees: int = 0) -> list[dict]:
+    try:
+        import numpy as np
+        from PIL import Image
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError:
+        return []
+
+    if clip.x1 <= clip.x0 or clip.y1 <= clip.y0:
+        return []
+
+    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), clip=clip, alpha=False)
+    image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    original_width, original_height = image.size
+
+    if rotate_degrees:
+        image = image.rotate(rotate_degrees, expand=True)
+
+    detector = RapidOCR()
+    result, _ = detector(np.array(image))
+    if not result:
+        return []
+
+    lines: list[dict] = []
+    for box, text, score in result:
+        normalized = unicodedata.normalize("NFKC", text).strip()
+        if not normalized:
+            continue
+
+        xs = [point[0] for point in box]
+        ys = [point[1] for point in box]
+        cx = (min(xs) + max(xs)) / 2
+        cy = (min(ys) + max(ys)) / 2
+
+        if rotate_degrees == 270:
+            page_x = cy / scale + clip.x0
+            page_y = (original_height - cx) / scale + clip.y0
+        elif rotate_degrees == 90:
+            page_x = (original_width - cy) / scale + clip.x0
+            page_y = cx / scale + clip.y0
+        else:
+            page_x = cx / scale + clip.x0
+            page_y = cy / scale + clip.y0
+
+        lines.append(
+            {
+                "t": normalized,
+                "cx": page_x,
+                "cy": page_y,
+                "score": float(score),
+            }
+        )
+
+    return lines
+
+
 def find_level_above_bar(y_bar: float, levels: list[dict]) -> dict | None:
     """Return the upper level that bounds the bar in PDF coordinates."""
 
@@ -703,7 +1042,7 @@ def find_level_above_bar(y_bar: float, levels: list[dict]) -> dict | None:
 
     below = [level for level in levels if level["y"] >= y_bar]
     if below:
-        return min(below, key=lambda level: level["y"])
+        return max(below, key=lambda level: level_sort_key(level["val"]))
     return None
 
 
@@ -783,6 +1122,147 @@ def get_box_rotated_labels(spans: list[dict], box: dict, vertical_lines: list[di
     return labels
 
 
+def detect_named_levels(page, boxes: list[dict]) -> list[tuple[str, float]]:
+    candidate_rows: list[tuple[float, str]] = []
+
+    for box in boxes:
+        clip = fitz.Rect(
+            max(0.0, box["x0"] - OCR_LOCAL_X_PAD_LEFT),
+            max(0.0, box["cy"] + 20.0),
+            min(page.rect.width, box["x1"] + OCR_LOCAL_X_PAD_RIGHT),
+            min(page.rect.height, box["cy"] + OCR_LOCAL_Y_PAD_BOTTOM),
+        )
+        lines = get_crop_ocr_lines(page, clip, OCR_LOCAL_SCALE)
+        if not lines:
+            continue
+
+        rows = group_by_y(
+            [
+                {
+                    "t": line["t"],
+                    "x0": line["cx"],
+                    "cx": line["cx"],
+                    "cy": line["cy"],
+                }
+                for line in lines
+            ],
+            tol=8,
+        )
+
+        for row in rows:
+            ordered = sorted(row, key=lambda item: item["cx"])
+            text = normalize_ocr_text(" ".join(item["t"] for item in ordered))
+            if "FUNDA" not in text and "LAJE" not in text and "LAIE" not in text:
+                continue
+            row_y = sum(item["cy"] for item in ordered) / len(ordered)
+            candidate_rows.append((row_y, text))
+
+    if not candidate_rows:
+        return []
+
+    candidate_rows.sort(key=lambda item: item[0])
+    clustered: list[dict] = []
+    for row_y, text in candidate_rows:
+        for cluster in clustered:
+            if abs(cluster["y"] - row_y) <= OCR_LEVEL_ROW_TOL_Y:
+                cluster["ys"].append(row_y)
+                cluster["texts"].append(text)
+                cluster["y"] = sum(cluster["ys"]) / len(cluster["ys"])
+                break
+        else:
+            clustered.append({"y": row_y, "ys": [row_y], "texts": [text]})
+
+    clustered.sort(key=lambda item: item["y"])
+    fund_rows = [cluster for cluster in clustered if any("FUNDA" in text for text in cluster["texts"])]
+    laje_rows = [cluster for cluster in clustered if cluster not in fund_rows]
+    if not laje_rows:
+        return []
+
+    levels: list[tuple[str, float]] = []
+    laje_count = len(laje_rows)
+    for index, cluster in enumerate(laje_rows):
+        explicit = None
+        for text in cluster["texts"]:
+            match = RE_LEVEL_DIGIT.search(text)
+            if match:
+                explicit = int(match.group(1))
+                break
+        floor_number = explicit if explicit is not None else laje_count - index
+        levels.append((f"{floor_number}A LAJE", cluster["y"]))
+
+    if fund_rows:
+        levels.append(("FUNDACAO", fund_rows[0]["y"]))
+
+    return levels
+
+
+def attach_named_level_entries(page, boxes: list[dict]) -> bool:
+    named_levels = detect_named_levels(page, boxes)
+    if len(named_levels) < 2:
+        return False
+
+    for box in boxes:
+        box["levels"] = [{"val": name, "x": box["cx"], "y": y} for name, y in named_levels]
+        box["_named_longitudinal_entries"] = []
+
+        for index in range(len(named_levels) - 1):
+            level_name, level_y = named_levels[index]
+            next_y = named_levels[index + 1][1]
+            strip = fitz.Rect(
+                min(page.rect.width, box["x1"] + OCR_BAND_STRIP_X_PAD_LEFT),
+                max(0.0, level_y + OCR_BAND_STRIP_Y_PAD),
+                min(page.rect.width, box["x1"] + OCR_BAND_STRIP_X_PAD_RIGHT),
+                min(page.rect.height, next_y - OCR_BAND_STRIP_Y_PAD),
+            )
+            if strip.x1 - strip.x0 < 20 or strip.y1 - strip.y0 < 20:
+                continue
+
+            lines = get_crop_ocr_lines(page, strip, OCR_STRIP_SCALE, rotate_degrees=270)
+            texts = [normalize_ocr_text(line["t"]) for line in lines]
+            if not texts:
+                continue
+
+            direct_entries: list[tuple[int, float]] = []
+            c_lengths: list[str] = []
+            for text in texts:
+                direct_entries.extend(extract_long_matches_from_text(text))
+                c_lengths.extend(
+                    match
+                    for match in RE_OCR_C_LENGTH.findall(text)
+                    if int(match) >= 70
+                )
+
+            token_entries: list[tuple[int, float]] = []
+            for pos, text in enumerate(texts[:-1]):
+                qty = parse_ocr_qty_token(text)
+                next_text = texts[pos + 1]
+                if qty is None:
+                    continue
+                if next_text.startswith("Φ"):
+                    token_matches = extract_long_matches_from_text(f"{text} {next_text}")
+                    token_entries.extend(token_matches)
+
+            entries = direct_entries or token_entries
+            if not entries:
+                continue
+
+            if len(entries) == 1 and len(c_lengths) > 1:
+                entries = entries * len(c_lengths)
+
+            for entry_index, (qty, diam) in enumerate(entries, start=1):
+                box["_named_longitudinal_entries"].append(
+                    (
+                        normalize_level_key(level_name),
+                        qty,
+                        normalize_longitudinal_diameter(diam),
+                        f"{normalize_level_key(level_name)}#{entry_index}",
+                        True,
+                    )
+                )
+
+    return any(box.get("_named_longitudinal_entries") for box in boxes)
+
+
 def rotated_label_confirms_lance_bar(
     spans: list[dict],
     box: dict,
@@ -819,6 +1299,9 @@ def row_has_lance_bar_segment(row_y: float, level: dict, box: dict, vertical_lin
     if not vertical_lines or not segments:
         return True
 
+    if box.get("levels") and row_y < min(item["y"] for item in box["levels"]):
+        return True
+
     return any(
         segment["y0"] - REBAR_ROW_TOL_Y <= row_y <= segment["y1"] + REBAR_ROW_TOL_Y
         and segment_crosses_level_line(segment, level)
@@ -829,9 +1312,17 @@ def row_has_lance_bar_segment(row_y: float, level: dict, box: dict, vertical_lin
 def extract_long_bars(
     spans: list[dict],
     box: dict,
-    lance_map: dict[float, int],
+    lance_map: dict[str, int],
     vertical_lines: list[dict] | None = None,
 ) -> list[tuple[int, int, float, str, bool]]:
+    if box.get("_named_longitudinal_entries"):
+        results: list[tuple[int, int, float, str, bool]] = []
+        for level_name, qty, diam, source, confirmed in box["_named_longitudinal_entries"]:
+            level_key = normalize_level_key(level_name)
+            if level_key in lance_map:
+                results.append((lance_map[level_key], qty, diam, source, confirmed))
+        return results
+
     if not box["levels"]:
         return []
 
@@ -848,32 +1339,47 @@ def extract_long_bars(
     ]
 
     rows = group_by_y(local, tol=6)
+    ordered_rows = [sorted(row, key=lambda span: span["x0"]) for row in rows]
     results: list[tuple[int, int, float, str, bool]] = []
 
-    for row in rows:
-        ordered = sorted(row, key=lambda span: span["x0"])
-        has_spacing_token = any(RE_C_SLASH.match(span["t"]) for span in ordered)
-
+    for row_index, ordered in enumerate(ordered_rows):
+        next_ordered = ordered_rows[row_index + 1] if row_index + 1 < len(ordered_rows) else []
+        next_row_is_close = bool(next_ordered) and abs(next_ordered[0]["cy"] - ordered[0]["cy"]) <= 8
         index = 0
         while index < len(ordered):
             if not RE_PX.match(ordered[index]["t"]):
                 index += 1
                 continue
 
-            qty: int | None = None
-            diam: float | None = None
             next_index = index + 1
             while next_index < len(ordered):
                 if RE_PX.match(ordered[next_index]["t"]):
                     break
-                if qty is None and RE_QTY.match(ordered[next_index]["t"]):
-                    qty = int(ordered[next_index]["t"])
+                next_index += 1
+
+            token_candidates = list(ordered[index + 1 : next_index])
+            if next_row_is_close:
+                next_p_x0 = ordered[next_index]["x0"] if next_index < len(ordered) else float("inf")
+                token_candidates.extend(
+                    span
+                    for span in next_ordered
+                    if not RE_PX.match(span["t"])
+                    and span["x0"] + 1 >= ordered[index]["x0"]
+                    and span["x0"] < next_p_x0 - 1
+                )
+                token_candidates.sort(key=lambda span: (span["x0"], span["cy"]))
+
+            has_spacing_token = any(RE_C_SLASH.match(span["t"]) for span in token_candidates)
+            qty: int | None = None
+            diam: float | None = None
+            for candidate in token_candidates:
+                if qty is None and RE_QTY.match(candidate["t"]):
+                    qty = int(candidate["t"])
                 elif qty is not None:
-                    match = RE_PHI.match(ordered[next_index]["t"])
+                    match = RE_PHI.match(candidate["t"])
                     if match:
                         diam = norm(match.group(1))
                         break
-                next_index += 1
 
             if qty is not None and diam is not None and diam >= BITOLA_MIN_LONG:
                 if has_spacing_token and qty > 12:
@@ -881,7 +1387,7 @@ def extract_long_bars(
                     continue
                 level = find_level_above_bar(ordered[index]["cy"], box["levels"])
                 if level is not None:
-                    level_key = round(level["val"], 2)
+                    level_key = normalize_level_key(level["val"])
                     if level_key in lance_map and row_has_lance_bar_segment(
                         ordered[index]["cy"],
                         level,
@@ -928,6 +1434,33 @@ def filter_bar_entries(entries: list[tuple[int, int, float, str, bool]]) -> list
     return filtered
 
 
+def source_y(entry: tuple[int, int, float, str, bool]) -> float:
+    source = entry[3]
+    if "@" not in source:
+        return float("inf")
+    try:
+        return float(source.rsplit("@", 1)[1])
+    except ValueError:
+        return float("inf")
+
+
+def keep_top_cluster_if_single_lance(
+    entries: list[tuple[int, int, float, str, bool]],
+    cluster_tol: float = 35.0,
+) -> list[tuple[int, int, float, str, bool]]:
+    if len({entry[0] for entry in entries}) != 1:
+        return entries
+    if len(entries) <= 1:
+        return entries
+
+    top_y = min(source_y(entry) for entry in entries)
+    if not math.isfinite(top_y):
+        return entries
+
+    filtered = [entry for entry in entries if source_y(entry) <= top_y + cluster_tol]
+    return filtered or entries
+
+
 def main() -> None:
     discover = "--discover" in sys.argv
     levels_only = "--levels" in sys.argv
@@ -942,14 +1475,36 @@ def main() -> None:
     spans = get_spans(page)
     vertical_lines, horizontal_lines = get_drawing_lines(page)
     boxes = find_boxes(spans)
+    if not boxes:
+        ocr_spans = get_ocr_spans(page)
+        if ocr_spans:
+            spans.extend(ocr_spans)
+            boxes = find_boxes(spans)
     assign_levels(spans, boxes)
+    if not collect_unique_levels(boxes):
+        attach_named_level_entries(page, boxes)
     attach_level_division_lines(boxes, horizontal_lines)
     doc.close()
 
     print(f"Boxes identificados: {len(boxes)}")
 
+    if discover:
+        print("\n=== DISCOVER MODE ===")
+        for box in boxes:
+            box_levels = [(format_level(level["val"]), round(level["y"], 2)) for level in box["levels"]]
+            origin = "OCR" if box.get("ocr") else "PDF"
+            print(f"\n  {box['raw']!r:40s} -> {box['names']} [{origin}]")
+            print(f"    Niveis (valor, y-PDF): {box_levels}")
+
     levels = collect_unique_levels(boxes)
     if not levels:
+        if boxes and discover:
+            print("\nNenhum nivel foi encontrado no PDF.")
+            return
+
+        if boxes:
+            names = ", ".join(dict.fromkeys(name for box in boxes for name in box["names"]))
+            sys.exit(f"[ERRO] Pilares reconhecidos ({names}), mas nenhum nivel foi encontrado no PDF.")
         sys.exit("[ERRO] Nenhum nivel foi encontrado no PDF.")
 
     assignable_levels = collect_assignable_levels(boxes, spans, vertical_lines)
@@ -965,15 +1520,9 @@ def main() -> None:
     default_map = build_default_lance_map(assignable_levels)
 
     if discover:
-        print("\n=== DISCOVER MODE ===")
-        for box in boxes:
-            box_levels = [(format_level(level["val"]), round(level["y"], 2)) for level in box["levels"]]
-            print(f"\n  {box['raw']!r:40s} -> {box['names']}")
-            print(f"    Niveis (valor, y-PDF): {box_levels}")
-
         print("\n=== NIVEIS UNICOS ===")
         for level in assignable_levels:
-            suggestion = default_map.get(level)
+            suggestion = default_map.get(normalize_level_key(level))
             extra = f" -> sugestao de lance {suggestion}" if suggestion is not None else ""
             print(f"  {format_level(level)}{extra}")
 
@@ -986,12 +1535,16 @@ def main() -> None:
         lance_map = {}
         print("Nenhum trecho de lance com armadura longitudinal foi identificado.")
     elif has_complete_lance_map(assignable_levels, default_map):
-        lance_map = {level: default_map[level] for level in assignable_levels}
+        lance_map = {normalize_level_key(level): default_map[normalize_level_key(level)] for level in assignable_levels}
         print("Mapeamento de lances aplicado automaticamente.")
     elif automation_mode:
         lance_map = default_map
-        mapped_levels = ", ".join(format_level(level) for level in assignable_levels if level in lance_map)
-        skipped_levels = ", ".join(format_level(level) for level in assignable_levels if level not in lance_map)
+        mapped_levels = ", ".join(
+            format_level(level) for level in assignable_levels if normalize_level_key(level) in lance_map
+        )
+        skipped_levels = ", ".join(
+            format_level(level) for level in assignable_levels if normalize_level_key(level) not in lance_map
+        )
         if mapped_levels:
             print(f"Mapeamento parcial aplicado: {mapped_levels}")
         if skipped_levels:
@@ -1001,7 +1554,9 @@ def main() -> None:
 
     raw_rows: dict[tuple[str, int], list[tuple[int, float, str]]] = defaultdict(list)
     for box in boxes:
-        data = filter_bar_entries(extract_long_bars(spans, box, lance_map, vertical_lines))
+        data = extract_long_bars(spans, box, lance_map, vertical_lines)
+        data = filter_bar_entries(data)
+        data = keep_top_cluster_if_single_lance(data)
         for lance, qty, diam, source, _confirmed in data:
             for name in box["names"]:
                 raw_rows[(name, lance)].append((qty, diam, source))

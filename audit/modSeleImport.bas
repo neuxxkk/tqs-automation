@@ -24,7 +24,8 @@ Public Sub LoadSele(ByVal path As String)
     Set lanceTitles = CreateObject("Scripting.Dictionary")
 
     Dim currentPilar As String: currentPilar = ""
-    Dim i As Long, lanceNum As Long, asVal As Double
+    Dim i As Long, lanceNum As Long
+    Dim asVal As Variant
     Dim lanceTitle As String
 
     For i = LBound(lines) To UBound(lines)
@@ -80,9 +81,9 @@ P1Next:
 
     Dim maxRows As Long: maxRows = UBound(lines) - LBound(lines) + 1
 
-    Dim arrPilar() As String:  ReDim arrPilar(1 To maxRows)
-    Dim arrLance() As Long:    ReDim arrLance(1 To maxRows)
-    Dim arrAs()    As Double:  ReDim arrAs(1 To maxRows)
+    Dim arrPilar() As String:   ReDim arrPilar(1 To maxRows)
+    Dim arrLance() As Long:     ReDim arrLance(1 To maxRows)
+    Dim arrAs()    As Variant:  ReDim arrAs(1 To maxRows)
 
     Dim rowCount As Long:  rowCount = 0
     currentPilar = ""
@@ -107,7 +108,11 @@ P1Next:
         rowCount = rowCount + 1
         arrPilar(rowCount) = NormalizePilarName(currentPilar)
         arrLance(rowCount) = lanceNum
-        arrAs(rowCount) = asVal / 10#
+        If IsNumeric(asVal) Then
+            arrAs(rowCount) = CDbl(asVal) / 10#
+        Else
+            arrAs(rowCount) = CStr(asVal)
+        End If
 P2Next:
     Next i
 
@@ -401,7 +406,7 @@ Public Function IsDataLine(ByVal line As String) As Boolean
     IsDataLine = IsNumeric(first)
 End Function
 
-Public Function ParseSeleLine(ByVal line As String, ByRef lance As Long, ByRef asVal As Double) As Boolean
+Public Function ParseSeleLine(ByVal line As String, ByRef lance As Long, ByRef asVal As Variant) As Boolean
     ParseSeleLine = False
 
     Dim s As String
@@ -416,10 +421,18 @@ Public Function ParseSeleLine(ByVal line As String, ByRef lance As Long, ByRef a
     Dim parts() As String
     parts = Split(s, " ")
 
-    If UBound(parts) < 8 Then Exit Function
+    If UBound(parts) < 2 Then Exit Function
     If Not IsNumeric(parts(0)) Then Exit Function
 
     lance = CLng(parts(0))
+
+    If InStr(1, s, "AVISO", vbTextCompare) > 0 Then
+        asVal = GetNaoDimensionadoText()
+        ParseSeleLine = True
+        Exit Function
+    End If
+
+    If UBound(parts) < 8 Then Exit Function
 
     Dim i As Long
     For i = 4 To UBound(parts) - 2

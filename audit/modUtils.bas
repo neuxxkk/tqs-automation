@@ -145,6 +145,10 @@ Public Function NormalizePilarName(ByVal raw As String) As String
     NormalizePilarName = UCase$(Trim$(raw))
 End Function
 
+Public Function GetNaoDimensionadoText() As String
+    GetNaoDimensionadoText = "n" & ChrW$(227) & "o dimensionado"
+End Function
+
 Public Function BuildPilarKey(ByVal pilar As String, ByVal lanceValue As Variant) As String
     BuildPilarKey = NormalizePilarName(pilar) & "|" & Trim$(CStr(lanceValue))
 End Function

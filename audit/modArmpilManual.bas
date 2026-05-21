@@ -8,16 +8,16 @@ Option Private Module
 
 Public Function PromptPilarInput(ByVal ws As Worksheet, ByVal preferredPrefix As String) As String
     Dim resp As Variant
-    Dim normalizedPilar As String
+    Dim parsedValues() As String
     Dim defaultValue As String
 
     defaultValue = GetSuggestedNextPilarInput(ws)
 
     Do
         resp = Application.InputBox( _
-            "Informe o numero do pilar." & vbCrLf & _
+            "Informe o numero do pilar ou um intervalo numerico." & vbCrLf & _
             "O prefixo " & preferredPrefix & " sera aplicado automaticamente." & vbCrLf & _
-            "Ex.: " & preferredPrefix & IIf(defaultValue <> "", defaultValue, "44"), _
+            "Ex.: " & preferredPrefix & IIf(defaultValue <> "", defaultValue, "44") & "  ou  1-5", _
             "Adicionar pilar", _
             defaultValue, _
             Type:=2 _
@@ -25,12 +25,39 @@ Public Function PromptPilarInput(ByVal ws As Worksheet, ByVal preferredPrefix As
 
         If IsDialogCancelled(resp) Then Exit Function
 
-        If TryNormalizeManualPilarInput(CStr(resp), preferredPrefix, normalizedPilar) Then
+        If TryParsePilarSelection(CStr(resp), preferredPrefix, parsedValues) Then
             PromptPilarInput = Trim$(CStr(resp))
             Exit Function
         End If
 
-        MsgBox "Informe somente o numero do pilar, com opcional sufixo. Ex.: 44 ou 48A.", vbExclamation, "Adicionar pilar"
+        MsgBox "Informe um pilar unico (44 ou 48A) ou um intervalo numerico como 1-5.", vbExclamation, "Adicionar pilar"
+    Loop
+End Function
+
+Public Function PromptLanceSelectionInput(ByVal ws As Worksheet) As String
+    Dim resp As Variant
+    Dim parsedValues() As Long
+    Dim defaultValue As String
+
+    defaultValue = GetSuggestedLanceForNewPilar(ws)
+
+    Do
+        resp = Application.InputBox( _
+            "Informe o lance ou um intervalo numerico." & vbCrLf & _
+            "Ex.: " & IIf(defaultValue <> "", defaultValue, "3") & "  ou  1-5", _
+            "Adicionar pilar", _
+            defaultValue, _
+            Type:=2 _
+        )
+
+        If IsDialogCancelled(resp) Then Exit Function
+
+        If TryParsePositiveLongSelection(CStr(resp), parsedValues) Then
+            PromptLanceSelectionInput = Trim$(CStr(resp))
+            Exit Function
+        End If
+
+        MsgBox "Informe um lance unico ou um intervalo numerico como 1-5.", vbExclamation, "Adicionar pilar"
     Loop
 End Function
 
@@ -63,6 +90,48 @@ Public Function PromptPositiveDoubleValue(ByVal promptText As String, ByVal titl
         End If
 
         MsgBox "Informe um numero maior que zero.", vbExclamation, titleText
+    Loop
+End Function
+
+Public Function PromptUniformValueChoice(ByVal promptText As String, ByVal titleText As String, ByRef useSameValue As Boolean) As Boolean
+    Dim choice As VbMsgBoxResult
+
+    choice = MsgBox(promptText, vbQuestion + vbYesNoCancel, titleText)
+    If choice = vbCancel Then Exit Function
+
+    useSameValue = (choice = vbYes)
+    PromptUniformValueChoice = True
+End Function
+
+Public Function PromptPositiveLongListValues(ByVal promptText As String, ByVal titleText As String, ByVal defaultValue As String, ByVal expectedCount As Long, ByRef parsedValues() As Long) As Boolean
+    Dim resp As Variant
+
+    Do
+        resp = Application.InputBox(promptText, titleText, defaultValue, Type:=2)
+        If IsDialogCancelled(resp) Then Exit Function
+
+        If TryParsePositiveLongList(CStr(resp), expectedCount, parsedValues) Then
+            PromptPositiveLongListValues = True
+            Exit Function
+        End If
+
+        MsgBox "Informe exatamente " & expectedCount & " valores inteiros maiores que zero, separados por ';'.", vbExclamation, titleText
+    Loop
+End Function
+
+Public Function PromptPositiveDoubleListValues(ByVal promptText As String, ByVal titleText As String, ByVal defaultValue As String, ByVal expectedCount As Long, ByRef parsedValues() As Double) As Boolean
+    Dim resp As Variant
+
+    Do
+        resp = Application.InputBox(promptText, titleText, defaultValue, Type:=2)
+        If IsDialogCancelled(resp) Then Exit Function
+
+        If TryParsePositiveDoubleList(CStr(resp), expectedCount, parsedValues) Then
+            PromptPositiveDoubleListValues = True
+            Exit Function
+        End If
+
+        MsgBox "Informe exatamente " & expectedCount & " valores maiores que zero, separados por ';'.", vbExclamation, titleText
     Loop
 End Function
 
@@ -101,6 +170,28 @@ Public Function GetSuggestedLanceForNewPilar(ByVal ws As Worksheet) As String
 
     cellValue = Trim$(CStr(ws.Cells(lastRow, 3).Value2))
     If IsNumeric(cellValue) Then GetSuggestedLanceForNewPilar = cellValue
+End Function
+
+Public Function GetSuggestedQtyForNewPilar(ByVal ws As Worksheet) As String
+    Dim lastRow As Long
+    Dim cellValue As String
+
+    lastRow = GetLastUsedRowInColumns(ws, 4, 4)
+    If lastRow < 6 Then Exit Function
+
+    cellValue = Trim$(CStr(ws.Cells(lastRow, 4).Value2))
+    If IsNumeric(cellValue) Then GetSuggestedQtyForNewPilar = cellValue
+End Function
+
+Public Function GetSuggestedBitolaForNewPilar(ByVal ws As Worksheet) As String
+    Dim lastRow As Long
+    Dim cellValue As String
+
+    lastRow = GetLastUsedRowInColumns(ws, 5, 5)
+    If lastRow < 6 Then Exit Function
+
+    cellValue = Trim$(CStr(ws.Cells(lastRow, 5).Value2))
+    If IsNumeric(CleanCSV(cellValue)) Then GetSuggestedBitolaForNewPilar = cellValue
 End Function
 
 Public Function GetPreferredPilarPrefix(ByVal ws As Worksheet) As String
@@ -193,6 +284,240 @@ Public Function IsSimplePilarBody(ByVal pilarBody As String) As Boolean
     Next i
 
     IsSimplePilarBody = True
+End Function
+
+Public Function TryParsePilarSelection(ByVal rawValue As String, ByVal preferredPrefix As String, ByRef parsedValues() As String) As Boolean
+    Dim startValue As Long
+    Dim endValue As Long
+    Dim i As Long
+    Dim normalizedPilar As String
+    Dim parts() As String
+    Dim startToken As String
+    Dim endToken As String
+
+    rawValue = UCase$(Trim$(CStr(rawValue)))
+    rawValue = Replace(rawValue, " ", "")
+    If rawValue = "" Then Exit Function
+
+    If InStr(1, rawValue, "-", vbTextCompare) > 0 Then
+        parts = Split(rawValue, "-")
+        If UBound(parts) <> 1 Then Exit Function
+
+        startToken = StripPilarPrefixToken(parts(0))
+        endToken = StripPilarPrefixToken(parts(1))
+        If Not TryGetPositiveLong(startToken, startValue) Then Exit Function
+        If Not TryGetPositiveLong(endToken, endValue) Then Exit Function
+        If endValue < startValue Then Exit Function
+
+        ReDim parsedValues(1 To endValue - startValue + 1)
+        For i = startValue To endValue
+            parsedValues(i - startValue + 1) = preferredPrefix & CStr(i)
+        Next i
+
+        TryParsePilarSelection = True
+        Exit Function
+    End If
+
+    If Not TryNormalizeManualPilarInput(rawValue, preferredPrefix, normalizedPilar) Then Exit Function
+
+    ReDim parsedValues(1 To 1)
+    parsedValues(1) = normalizedPilar
+    TryParsePilarSelection = True
+End Function
+
+Public Function TryParsePositiveLongSelection(ByVal rawValue As String, ByRef parsedValues() As Long) As Boolean
+    Dim startValue As Long
+    Dim endValue As Long
+    Dim singleValue As Long
+    Dim i As Long
+
+    rawValue = Trim$(CStr(rawValue))
+    If rawValue = "" Then Exit Function
+
+    If TryParsePositiveLongRangeText(rawValue, startValue, endValue) Then
+        ReDim parsedValues(1 To endValue - startValue + 1)
+        For i = startValue To endValue
+            parsedValues(i - startValue + 1) = i
+        Next i
+
+        TryParsePositiveLongSelection = True
+        Exit Function
+    End If
+
+    If Not TryGetPositiveLong(rawValue, singleValue) Then Exit Function
+
+    ReDim parsedValues(1 To 1)
+    parsedValues(1) = singleValue
+    TryParsePositiveLongSelection = True
+End Function
+
+Public Function TryExpandArmpilSelections(ByRef selectedPilares() As String, ByRef selectedLances() As Long, ByRef expandedPilares() As String, ByRef expandedLances() As Long, ByRef infoMessage As String) As Boolean
+    Dim pilarCount As Long
+    Dim lanceCount As Long
+    Dim rowCount As Long
+    Dim pilarIndex As Long
+    Dim lanceIndex As Long
+    Dim i As Long
+
+    pilarCount = GetStringArrayCount(selectedPilares)
+    lanceCount = GetLongArrayCount(selectedLances)
+    If pilarCount <= 0 Or lanceCount <= 0 Then Exit Function
+
+    rowCount = pilarCount * lanceCount
+
+    ReDim expandedPilares(1 To rowCount)
+    ReDim expandedLances(1 To rowCount)
+
+    i = 0
+    For pilarIndex = 1 To pilarCount
+        For lanceIndex = 1 To lanceCount
+            i = i + 1
+            expandedPilares(i) = selectedPilares(pilarIndex)
+            expandedLances(i) = selectedLances(lanceIndex)
+        Next lanceIndex
+    Next pilarIndex
+
+    TryExpandArmpilSelections = True
+End Function
+
+Public Function StripPilarPrefixToken(ByVal rawText As String) As String
+    rawText = UCase$(Trim$(rawText))
+    rawText = Replace(rawText, " ", "")
+
+    If Left$(rawText, 3) = "PAF" Then
+        StripPilarPrefixToken = Mid$(rawText, 4)
+    ElseIf Left$(rawText, 1) = "P" Then
+        StripPilarPrefixToken = Mid$(rawText, 2)
+    Else
+        StripPilarPrefixToken = rawText
+    End If
+End Function
+
+Public Function TryParsePositiveLongRangeText(ByVal rawText As String, ByRef startValue As Long, ByRef endValue As Long) As Boolean
+    Dim parts() As String
+
+    rawText = Replace(Trim$(rawText), " ", "")
+    If rawText = "" Then Exit Function
+    If InStr(1, rawText, "-", vbTextCompare) <= 0 Then Exit Function
+
+    parts = Split(rawText, "-")
+    If UBound(parts) <> 1 Then Exit Function
+    If Not TryGetPositiveLong(parts(0), startValue) Then Exit Function
+    If Not TryGetPositiveLong(parts(1), endValue) Then Exit Function
+    If endValue < startValue Then Exit Function
+
+    TryParsePositiveLongRangeText = True
+End Function
+
+Public Function TryParsePositiveLongList(ByVal rawText As String, ByVal expectedCount As Long, ByRef parsedValues() As Long) As Boolean
+    Dim parts() As String
+    Dim i As Long
+    Dim token As String
+    Dim parsedValue As Long
+
+    rawText = NormalizeListPromptInput(rawText, True)
+    If rawText = "" Then Exit Function
+
+    parts = Split(rawText, ";")
+    If UBound(parts) - LBound(parts) + 1 <> expectedCount Then Exit Function
+
+    ReDim parsedValues(1 To expectedCount)
+    For i = 0 To UBound(parts)
+        token = Trim$(parts(i))
+        If Not TryGetPositiveLong(token, parsedValue) Then Exit Function
+        parsedValues(i + 1) = parsedValue
+    Next i
+
+    TryParsePositiveLongList = True
+End Function
+
+Public Function TryParsePositiveDoubleList(ByVal rawText As String, ByVal expectedCount As Long, ByRef parsedValues() As Double) As Boolean
+    Dim parts() As String
+    Dim i As Long
+    Dim token As String
+    Dim parsedValue As Double
+
+    rawText = NormalizeListPromptInput(rawText, False)
+    If rawText = "" Then Exit Function
+
+    parts = Split(rawText, ";")
+    If UBound(parts) - LBound(parts) + 1 <> expectedCount Then Exit Function
+
+    ReDim parsedValues(1 To expectedCount)
+    For i = 0 To UBound(parts)
+        token = Trim$(parts(i))
+        If Not TryGetPositiveDouble(token, parsedValue) Then Exit Function
+        parsedValues(i + 1) = parsedValue
+    Next i
+
+    TryParsePositiveDoubleList = True
+End Function
+
+Public Function NormalizeListPromptInput(ByVal rawText As String, ByVal allowCommaSeparator As Boolean) As String
+    rawText = Trim$(rawText)
+    rawText = Replace(rawText, vbCrLf, ";")
+    rawText = Replace(rawText, vbCr, ";")
+    rawText = Replace(rawText, vbLf, ";")
+    If allowCommaSeparator Then rawText = Replace(rawText, ",", ";")
+    If rawText = "" Then Exit Function
+    Do While InStr(rawText, ";;") > 0
+        rawText = Replace(rawText, ";;", ";")
+    Loop
+    If Left$(rawText, 1) = ";" Then rawText = Mid$(rawText, 2)
+    If rawText = "" Then Exit Function
+    If Right$(rawText, 1) = ";" Then rawText = Left$(rawText, Len(rawText) - 1)
+
+    NormalizeListPromptInput = rawText
+End Function
+
+Public Function GetStringArrayCount(ByRef values() As String) As Long
+    On Error GoTo EmptyArray
+    GetStringArrayCount = UBound(values) - LBound(values) + 1
+    Exit Function
+
+EmptyArray:
+    GetStringArrayCount = 0
+End Function
+
+Public Function GetLongArrayCount(ByRef values() As Long) As Long
+    On Error GoTo EmptyArray
+    GetLongArrayCount = UBound(values) - LBound(values) + 1
+    Exit Function
+
+EmptyArray:
+    GetLongArrayCount = 0
+End Function
+
+Public Function BuildRepeatedDefaultList(ByVal seedValue As String, ByVal itemCount As Long) As String
+    Dim i As Long
+    Dim normalizedSeed As String
+
+    normalizedSeed = Trim$(seedValue)
+    If normalizedSeed = "" Or itemCount <= 0 Then Exit Function
+
+    For i = 1 To itemCount
+        If BuildRepeatedDefaultList <> "" Then BuildRepeatedDefaultList = BuildRepeatedDefaultList & "; "
+        BuildRepeatedDefaultList = BuildRepeatedDefaultList & normalizedSeed
+    Next i
+End Function
+
+Public Function BuildArmpilRowSelectionPreview(ByRef pilarValues() As String, ByRef lanceValues() As Long, ByVal rowCount As Long) As String
+    Dim i As Long
+    Dim maxItems As Long
+
+    If rowCount <= 0 Then Exit Function
+
+    maxItems = rowCount
+    If maxItems > 8 Then maxItems = 8
+
+    For i = 1 To maxItems
+        If BuildArmpilRowSelectionPreview <> "" Then BuildArmpilRowSelectionPreview = BuildArmpilRowSelectionPreview & vbCrLf
+        BuildArmpilRowSelectionPreview = BuildArmpilRowSelectionPreview & " - " & pilarValues(i) & " / lance " & lanceValues(i)
+    Next i
+
+    If rowCount > maxItems Then
+        BuildArmpilRowSelectionPreview = BuildArmpilRowSelectionPreview & vbCrLf & " - ..."
+    End If
 End Function
 
 Public Function NormalizeManualArmpilEntries(ByVal ws As Worksheet, ByRef rowCount As Long, ByRef infoMessage As String) As Boolean
