@@ -1,13 +1,18 @@
 import sys
 import os
+import json
 import subprocess
 import threading
 import tkinter as tk
+from datetime import datetime, timezone
 from tkinter import font as tkfont
 
 # Suprime janela de console em subprocessos no Windows
 CREATE_NO_WINDOW = 0x08000000
 RELAUNCH_ENV = "SCRIPTS_FORMULA_RELAUNCH"
+RELEASE_VERSION_ENV = "SCRIPTS_FORMULA_RELEASE_VERSION"
+RELEASE_FINGERPRINT_ENV = "SCRIPTS_FORMULA_RELEASE_FINGERPRINT"
+RELEASE_UPDATED_AT_ENV = "SCRIPTS_FORMULA_RELEASE_UPDATED_AT"
 
 # ---------------------------------------------------------------------------
 # Paleta — frontend_design.md
@@ -23,6 +28,7 @@ C_ERROR       = "#e24b4a"
 C_TRACK       = "#2c2c2a"   # trilho da barra de progresso
 
 APP_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+UPDATE_STATE_PATH = os.path.join(APP_ROOT, ".update_state.json")
 
 STEPS = [
     ("Atualizando pip...",                  ["-m", "pip", "install", "--upgrade", "pip"]),
@@ -78,6 +84,37 @@ def make_cmd(py_exe, py_args, step_args):
     return [py_exe] + py_args + step_args
 
 
+def persist_update_state():
+    version = os.getenv(RELEASE_VERSION_ENV, "").strip()
+    fingerprint = os.getenv(RELEASE_FINGERPRINT_ENV, "").strip()
+    asset_updated_at = os.getenv(RELEASE_UPDATED_AT_ENV, "").strip()
+
+    if not version:
+        version_path = os.path.join(APP_ROOT, "version.txt")
+        try:
+            with open(version_path, "r", encoding="utf-8") as fh:
+                version = fh.read().strip()
+        except OSError:
+            version = ""
+
+    if not version:
+        return
+
+    now_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    payload = {
+        "version": version,
+        "installed_at": now_iso,
+        "saved_at": now_iso,
+    }
+    if fingerprint:
+        payload["fingerprint"] = fingerprint
+    if asset_updated_at:
+        payload["asset_updated_at"] = asset_updated_at
+
+    with open(UPDATE_STATE_PATH, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, indent=2, ensure_ascii=True)
+
+
 # ---------------------------------------------------------------------------
 # GUI
 # ---------------------------------------------------------------------------
@@ -96,7 +133,8 @@ class InstallerWindow:
         self._log_visible = False
         self._done        = False
         self._error       = False
-        self._should_relaunch = os.getenv(RELAUNCH_ENV, "").strip() == "1"
+        self._should_offer_relaunch = os.getenv(RELAUNCH_ENV, "").strip() == "1"
+        self._relaunch_var = tk.BooleanVar(value=self._should_offer_relaunch)
 
         self.root.geometry("480x500")
         self.root.resizable(False, True)
@@ -214,7 +252,24 @@ class InstallerWindow:
             bg=C_GREEN, fg="#ffffff",
             activebackground=C_GREEN_DARK, activeforeground="#ffffff",
             relief="flat", cursor="hand2", bd=0, padx=16, pady=6,
-            command=self.root.destroy,
+            command=self._finish_success,
+        )
+
+        self._relaunch_check = tk.Checkbutton(
+            outer,
+            text="Reabrir a central ao concluir",
+            variable=self._relaunch_var,
+            font=("Segoe UI", 9),
+            bg=C_BG,
+            fg=C_TEXT_PRI,
+            activebackground=C_BG,
+            activeforeground=C_TEXT_PRI,
+            selectcolor=C_SURFACE,
+            highlightthickness=0,
+            bd=0,
+            anchor="w",
+            padx=0,
+            pady=0,
         )
 
     # ------------------------------------------------------------------
@@ -304,15 +359,21 @@ class InstallerWindow:
 
     # ------------------------------------------------------------------
     def _on_success(self):
+        try:
+            persist_update_state()
+        except Exception as exc:
+            self._append_log(f"[AVISO] Nao foi possivel salvar o estado da atualizacao: {exc}\n")
         self._status_var.set("Instalação concluída com sucesso.")
         self._set_progress(100)
-        if self._should_relaunch:
-            self._status_var.set("Instalacao concluida com sucesso. Reabrindo a central...")
+        if self._should_offer_relaunch:
+            self._status_var.set("Instalacao concluida com sucesso. Escolha abaixo se deseja reabrir a central agora.")
+            self._relaunch_check.pack(anchor="w", pady=(16, 0))
+            self._close_btn.config(text="Concluir")
+        else:
+            self._close_btn.config(text="Fechar")
         self._close_btn.config(bg=C_GREEN)
         self._close_btn.pack(pady=(16, 0))
         self._done = True
-        if self._should_relaunch:
-            self.root.after(500, self._relaunch_app)
 
     def _on_error(self, msg: str):
         self._status_var.set(f"Falha: {msg}")
@@ -329,6 +390,24 @@ class InstallerWindow:
         self._on_error(
             "Python não encontrado. Instale o Python 3.13 em python.org e tente novamente."
         )
+
+    def _finish_success(self):
+        if self._error:
+            self.root.destroy()
+            return
+
+        if not self._done:
+            return
+
+        if self._should_offer_relaunch and self._relaunch_var.get():
+            self._status_var.set("Instalacao concluida. Reabrindo a central...")
+            self._close_btn.config(state="disabled")
+            self._relaunch_check.config(state="disabled")
+            self.root.after(200, self._relaunch_app)
+            return
+
+        self.root.destroy()
+
     def _relaunch_app(self):
         launcher = os.path.join(APP_ROOT, "launchers", "Scripts Formula.bat")
         launch_dir = os.path.dirname(launcher)
@@ -343,7 +422,7 @@ class InstallerWindow:
             else:
                 subprocess.Popen([launcher], cwd=launch_dir)
         except Exception as exc:
-            self._should_relaunch = False
+            self._should_offer_relaunch = False
             self._on_error(f"Nao foi possivel reabrir a central: {exc}")
             return
 

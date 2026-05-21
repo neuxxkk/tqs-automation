@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import tkinter as tk
 import urllib.error
@@ -13,6 +14,7 @@ from pathlib import Path
 from tkinter import messagebox
 from tkinter import ttk
 from typing import Callable
+from updater import check_for_update
 
 try:
     import winreg
@@ -37,6 +39,7 @@ _C50  = "#f8f7f4"   # fundo de cards
 _VERDE = "#5a8a4a"  # cor principal da marca
 _VERDE_H = "#3b6d11" # hover
 _BRANCO = "#ffffff"
+_ALERTA = "#d6b25e"
 
 _ABOUT_TEXTS = {
     "Dimensionar Vigas": (
@@ -342,8 +345,12 @@ class ScriptLauncherApp(tk.Tk):
         self._set_window_icon()
 
         self._running_processes: list[subprocess.Popen] = []
+        self._pending_update_info: dict | None = None
+        self._update_notice: tk.Label | None = None
+        self._update_prompt_shown = False
         self._configure_styles()
         self._build_ui()
+        self.after(800, self._start_update_check)
 
     def _set_window_icon(self) -> None:
         icon_path = _resolve_app_icon()
@@ -445,6 +452,24 @@ class ScriptLauncherApp(tk.Tk):
         upd_btn.bind("<Enter>", lambda e: upd_btn.configure(fg=_BRANCO, bg=_C800))
         upd_btn.bind("<Leave>", lambda e: upd_btn.configure(fg=_C300, bg=_C900))
         upd_btn.bind("<Button-1>", lambda _e: self._run_updater())
+        self._update_button = upd_btn
+
+        self._update_notice = tk.Label(
+            sidebar,
+            text="",
+            font=("Segoe UI", 8, "bold"),
+            bg=_C900,
+            fg=_ALERTA,
+            anchor="w",
+            justify="left",
+            cursor="hand2",
+            wraplength=170,
+            padx=16,
+            pady=4,
+        )
+        self._update_notice.bind("<Enter>", lambda e: self._update_notice.configure(fg=_BRANCO))
+        self._update_notice.bind("<Leave>", lambda e: self._update_notice.configure(fg=_ALERTA))
+        self._update_notice.bind("<Button-1>", lambda _e: self._run_updater(auto_start_download=True))
 
         link_btn = tk.Label(
             sidebar, text="",
@@ -843,8 +868,80 @@ class ScriptLauncherApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Erro ao executar", f"Falha ao abrir {script_name}:\n{exc}")
 
-    def _run_updater(self) -> None:
-        self._run_python_script("updater.py", extra_args=["--app-pid", str(os.getpid())])
+    def _start_update_check(self) -> None:
+        threading.Thread(target=self._check_updates_in_background, daemon=True).start()
+
+    def _check_updates_in_background(self) -> None:
+        try:
+            update_info = check_for_update()
+        except Exception:
+            return
+        self.after(0, lambda: self._handle_update_check_result(update_info))
+
+    def _handle_update_check_result(self, update_info: dict) -> None:
+        if not update_info.get("available"):
+            self._pending_update_info = None
+            self._hide_update_notice()
+            return
+
+        self._pending_update_info = update_info
+        if self._update_prompt_shown:
+            return
+
+        self._update_prompt_shown = True
+        latest_version = str(update_info.get("latest_version", "")).strip()
+        local_version = str(update_info.get("local_version", "")).strip()
+        reason = str(update_info.get("reason", "")).strip()
+
+        if reason == "new_package" and latest_version == local_version:
+            prompt = (
+                f"Existe um pacote revisado disponivel para a versao {latest_version}.\n\n"
+                "Deseja atualizar agora?"
+            )
+        else:
+            prompt = (
+                f"Existe uma nova versao disponivel ({latest_version}).\n\n"
+                "Deseja atualizar agora?"
+            )
+
+        should_update_now = messagebox.askyesno(
+            "Atualizacao disponivel",
+            prompt,
+            parent=self,
+        )
+        if should_update_now:
+            self._hide_update_notice()
+            self._run_updater(auto_start_download=True)
+            return
+
+        self._show_update_notice(update_info)
+
+    def _show_update_notice(self, update_info: dict) -> None:
+        if not self._update_notice:
+            return
+
+        latest_version = str(update_info.get("latest_version", "")).strip()
+        local_version = str(update_info.get("local_version", "")).strip()
+        reason = str(update_info.get("reason", "")).strip()
+
+        if reason == "new_package" and latest_version == local_version:
+            notice_text = f"Atualizacao disponivel\npacote revisado {latest_version}"
+        else:
+            notice_text = f"Atualizacao disponivel\nversao {latest_version}"
+
+        self._update_notice.configure(text=notice_text)
+        if not self._update_notice.winfo_manager():
+            self._update_notice.pack(fill="x", pady=(0, 6))
+
+    def _hide_update_notice(self) -> None:
+        if self._update_notice and self._update_notice.winfo_manager():
+            self._update_notice.pack_forget()
+
+    def _run_updater(self, auto_start_download: bool = False) -> None:
+        extra_args = ["--app-pid", str(os.getpid())]
+        if auto_start_download:
+            extra_args.append("--auto-start-download")
+        self._run_python_script("updater.py", extra_args=extra_args)
 
     def _run_detalhes_viga(self) -> None:
         self._run_python_script("detalhes_viga.py")
