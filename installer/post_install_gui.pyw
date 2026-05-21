@@ -7,6 +7,7 @@ from tkinter import font as tkfont
 
 # Suprime janela de console em subprocessos no Windows
 CREATE_NO_WINDOW = 0x08000000
+RELAUNCH_ENV = "SCRIPTS_FORMULA_RELAUNCH"
 
 # ---------------------------------------------------------------------------
 # Paleta — frontend_design.md
@@ -95,6 +96,7 @@ class InstallerWindow:
         self._log_visible = False
         self._done        = False
         self._error       = False
+        self._should_relaunch = os.getenv(RELAUNCH_ENV, "").strip() == "1"
 
         self.root.geometry("480x500")
         self.root.resizable(False, True)
@@ -304,9 +306,13 @@ class InstallerWindow:
     def _on_success(self):
         self._status_var.set("Instalação concluída com sucesso.")
         self._set_progress(100)
+        if self._should_relaunch:
+            self._status_var.set("Instalacao concluida com sucesso. Reabrindo a central...")
         self._close_btn.config(bg=C_GREEN)
         self._close_btn.pack(pady=(16, 0))
         self._done = True
+        if self._should_relaunch:
+            self.root.after(500, self._relaunch_app)
 
     def _on_error(self, msg: str):
         self._status_var.set(f"Falha: {msg}")
@@ -323,6 +329,25 @@ class InstallerWindow:
         self._on_error(
             "Python não encontrado. Instale o Python 3.13 em python.org e tente novamente."
         )
+    def _relaunch_app(self):
+        launcher = os.path.join(APP_ROOT, "launchers", "Scripts Formula.bat")
+        launch_dir = os.path.dirname(launcher)
+
+        try:
+            if os.name == "nt":
+                subprocess.Popen(
+                    ["cmd", "/c", launcher],
+                    cwd=launch_dir,
+                    creationflags=CREATE_NO_WINDOW,
+                )
+            else:
+                subprocess.Popen([launcher], cwd=launch_dir)
+        except Exception as exc:
+            self._should_relaunch = False
+            self._on_error(f"Nao foi possivel reabrir a central: {exc}")
+            return
+
+        self.root.after(500, self.root.destroy)
 
 
 # ---------------------------------------------------------------------------

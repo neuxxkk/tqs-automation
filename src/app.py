@@ -844,7 +844,7 @@ class ScriptLauncherApp(tk.Tk):
             messagebox.showerror("Erro ao executar", f"Falha ao abrir {script_name}:\n{exc}")
 
     def _run_updater(self) -> None:
-        self._run_python_script("updater.py")
+        self._run_python_script("updater.py", extra_args=["--app-pid", str(os.getpid())])
 
     def _run_detalhes_viga(self) -> None:
         self._run_python_script("detalhes_viga.py")

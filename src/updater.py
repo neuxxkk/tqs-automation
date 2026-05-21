@@ -1,8 +1,10 @@
+import argparse
 import os
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import tkinter as tk
 import urllib.error
 import urllib.request
@@ -24,6 +26,7 @@ _ERRO   = "#e24b4a"
 GITHUB_API  = "https://api.github.com/repos/neuxxkk/tqs-automation/releases/latest"
 SETUP_URL   = "https://github.com/neuxxkk/tqs-automation/releases/latest/download/Scripts-Formula-Setup.exe"
 VERSION_FILE = Path(__file__).resolve().parent.parent / "version.txt"
+RELAUNCH_ENV = "SCRIPTS_FORMULA_RELAUNCH"
 
 
 def _local_version() -> str:
@@ -41,13 +44,40 @@ def _fetch_latest_version() -> str:
     return tag.lstrip("v")
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--app-pid", type=int, default=0)
+    return parser.parse_args()
+
+
+def _close_running_app(app_pid: int) -> None:
+    if app_pid <= 0 or app_pid == os.getpid():
+        return
+
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(app_pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        try:
+            os.kill(app_pid, 15)
+        except OSError:
+            pass
+
+    time.sleep(0.8)
+
+
 class UpdaterWindow(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, app_pid: int = 0) -> None:
         super().__init__()
         self.title("Atualizar Scripts Fórmula")
         self.configure(bg=_C100)
         self.resizable(False, False)
 
+        self._app_pid = app_pid
         self._local_ver = _local_version()
         self._latest_ver: str = ""
         self._setup_path: str = ""
@@ -204,8 +234,16 @@ class UpdaterWindow(tk.Tk):
 
     def _launch_installer(self) -> None:
         try:
-            subprocess.Popen([self._setup_path], creationflags=subprocess.CREATE_NEW_CONSOLE
-                             if os.name == "nt" else 0)
+            self._status_var.set("Fechando a versao atual e iniciando o instalador...")
+            self.update_idletasks()
+            _close_running_app(self._app_pid)
+            env = os.environ.copy()
+            env[RELAUNCH_ENV] = "1"
+            subprocess.Popen(
+                [self._setup_path],
+                creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0,
+                env=env,
+            )
         except Exception as exc:
             messagebox.showerror("Erro", f"Não foi possível iniciar o instalador:\n{exc}")
             return
@@ -213,4 +251,5 @@ class UpdaterWindow(tk.Tk):
 
 
 if __name__ == "__main__":
-    UpdaterWindow().mainloop()
+    args = _parse_args()
+    UpdaterWindow(app_pid=args.app_pid).mainloop()
