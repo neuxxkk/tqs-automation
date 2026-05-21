@@ -1,0 +1,3 @@
+@echo off
+echo A iniciar a Extracao de DWGs da Grelha Nao Linear...
+python ..\src\extrair_dwg_grelha.py

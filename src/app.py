@@ -41,9 +41,15 @@ _BRANCO = "#ffffff"
 _ABOUT_TEXTS = {
     "Dimensionar Vigas": (
         "Automatiza o dimensionamento e detalhamento de todas as vigas de um edifício no TQS.\n\n"
-        "O script identifica os pavimentos, executa o processamento global (apenas vigas) e "
+        "O script identifica os pavimentos, executa a extracao/processamento das formas e o "
+        "dimensionamento global das vigas, e "
         "coleta os relatórios RELGER.LST gerados, renomeando-os no padrão 'Vigas <Pavimento>.LST' "
         "em uma pasta de destino escolhida por você."
+    ),
+    "Grelha Nao Linear": (
+        "Executa o processamento nao linear da grelha no TQS em um unico fluxo.\n\n"
+        "A rotina processa formas, pre-processa as armaduras lineares e executa a analise "
+        "nao linear da grelha antes da geracao dos desenhos correspondentes."
     ),
     "Calculo de Beiral": (
         "Abre uma interface web (Streamlit) para cálculo estrutural de beirais em balanço.\n\n"
@@ -410,6 +416,7 @@ class ScriptLauncherApp(tk.Tk):
 
         nav_defs = [
             ("Dimensionar Vigas", "vigas", self._run_detalhes_viga),
+            ("Grelha Nao Linear", "grelha", self._run_grelha_nao_linear),
             ("Cálculo de Beiral", "beiral", self._run_calc_beiral),
             ("Calculo de Escadas", "escadas", self._run_calculo_escadas),
             ("Auditoria ARMPIL", "auditoria", self._open_auditoria_armpil),
@@ -520,6 +527,19 @@ class ScriptLauncherApp(tk.Tk):
             steps=[
                 ("1", "Selecione o diretório raiz do edifício a ser dimensionado"),
                 ("2", "Selecione o diretório de destino para os arquivos .LST gerados"),
+            ],
+        )
+
+        self._build_tool_card(
+            parent=content, key="grelha",
+            title="Grelha Nao Linear",
+            description="Executa formas, armaduras lineares e analise nao linear da grelha no TQS.",
+            action=self._run_grelha_nao_linear,
+            btn_style="Secondary.TButton",
+            about_key="Grelha Nao Linear",
+            steps=[
+                ("1", "Selecione a pasta raiz do edificio, se necessario"),
+                ("2", "Aguarde o TQS concluir o processamento nao linear da grelha"),
             ],
         )
 
@@ -828,6 +848,9 @@ class ScriptLauncherApp(tk.Tk):
 
     def _run_detalhes_viga(self) -> None:
         self._run_python_script("detalhes_viga.py")
+
+    def _run_grelha_nao_linear(self) -> None:
+        self._run_python_script("extrair_dwg_grelha.py")
 
     def _streamlit_is_ready(self, url: str) -> bool:
         for endpoint in ("/_stcore/health", "/healthz"):

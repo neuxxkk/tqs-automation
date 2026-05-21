@@ -504,8 +504,10 @@ def processar_todas_vigas():
     files_preview = find_relger_files(root_dir_para_exportacao)
     total_pavimentos = len(files_preview) if files_preview else "?"
 
-    progresso.set_etapa("Executando dimensionamento (abra EDITW para detalhes)...")
-    progresso.set_detalhe(f"{total_pavimentos} pavimento(s) detectado(s). Aguarde o TQS processar...")
+    progresso.set_etapa("Executando formas + dimensionamento (abra EDITW para detalhes)...")
+    progresso.set_detalhe(
+        f"{total_pavimentos} pavimento(s) detectado(s). Aguarde o TQS extrair/processar as formas e dimensionar as vigas..."
+    )
     if _abortar_se_cancelado(progresso):
         return
     progresso._progress.configure(mode="indeterminate")
@@ -519,7 +521,7 @@ def processar_todas_vigas():
     job.EnterTask(tarefa_pasta)
 
     tarefa_vigas = TQSExec.TaskGlobalProc(
-        floorPlan=0, floorDraw=0, slabs=0,
+        floorPlan=2, floorDraw=0, slabs=0,
         beams=2,
         columnsData=0, columns=0, columnsReport=0,
         gridModel=0, gridDraw=0, gridExtr=0, gridAnalysis=0,
