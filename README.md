@@ -4,7 +4,7 @@ Suite interna de automacoes da Formula Engenharia para apoio a fluxos de projeto
 
 Hoje o sistema reune quatro frentes principais em uma central unica:
 
-- `Dimensionar Vigas`: processamento de vigas no TQS e coleta dos `RELGER.LST`.
+- `Dimensionar Vigas`: processamento das formas + vigas no TQS e coleta dos `RELGER.LST`.
 - `Calculo de Beiral`: aplicacao web em Streamlit para calculo estrutural e emissao de memorial.
 - `Calculo de Escadas`: aplicacao web em Streamlit para modelagem de lances, carregamentos e memoria de calculo.
 - `Auditoria ARMPIL`: planilha Excel com macros para conferencia de armacao de pilares.
@@ -48,7 +48,7 @@ Ela concentra:
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install xlsxwriter pillow streamlit==1.56.0 fpdf2 matplotlib PyMuPDF
+python -m pip install xlsxwriter pillow streamlit==1.56.0 fpdf2 matplotlib PyMuPDF rapidocr_onnxruntime
 ```
 
 3. Se precisar copiar os arquivos de integracao para o TQS:

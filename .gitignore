@@ -5,3 +5,4 @@ __pycache__/
 audit/arquivos_teste/
 debug_*.png
 *.log
+~$*.xls*
