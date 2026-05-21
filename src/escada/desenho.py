@@ -43,15 +43,24 @@ def posicionar_lances(
     layout: LayoutDesenho = "horario",
 ) -> list[PosicaoLance]:
     """Calcula posicao de cada lance para o preview."""
-    if layout == "horario":
+    validar_sobreposicao = True
+
+    if escada.n_lances == 2:
+        posicoes = _posicionar_lances_horizontal_2(escada)
+    elif layout == "horario":
         posicoes = _posicionar_lances_espiral(escada)
     elif layout == "croqui" and escada.n_lances == 3:
         posicoes = _posicionar_lances_croqui_3(escada)
+        validar_sobreposicao = False
     elif layout == "auto" and escada.n_lances == 3:
         posicoes = _posicionar_lances_croqui_3(escada)
+        validar_sobreposicao = False
     else:
         posicoes = _posicionar_lances_espiral(escada)
-    return _ajustar_adjacencias_de_apoio(escada, posicoes)
+    posicoes = _ajustar_adjacencias_de_apoio(escada, posicoes)
+    if validar_sobreposicao:
+        _validar_sem_sobreposicao(posicoes)
+    return posicoes
 
 
 def _posicionar_lances_croqui_3(escada: Escada) -> list[PosicaoLance]:
@@ -96,6 +105,34 @@ def _posicionar_lances_croqui_3(escada: Escada) -> list[PosicaoLance]:
             y=topo_inferior,
             w=largura_superior,
             h=lance3.b,
+            sentido="right",
+            cota_vaos="top",
+            cota_b="right",
+        ),
+    ]
+
+
+def _posicionar_lances_horizontal_2(escada: Escada) -> list[PosicaoLance]:
+    """Mantem 2 lances empilhados, com a mesma orientacao horizontal."""
+    lance1, lance2 = escada.lances
+
+    return [
+        PosicaoLance(
+            indice=lance1.indice,
+            x=0.0,
+            y=0.0,
+            w=lance1.comprimento_total,
+            h=lance1.b,
+            sentido="right",
+            cota_vaos="bottom",
+            cota_b="left",
+        ),
+        PosicaoLance(
+            indice=lance2.indice,
+            x=0.0,
+            y=lance1.b,
+            w=lance2.comprimento_total,
+            h=lance2.b,
             sentido="right",
             cota_vaos="top",
             cota_b="right",
@@ -148,13 +185,61 @@ def _posicionar_lances_espiral(escada: Escada) -> list[PosicaoLance]:
             cota_vaos = "bottom"
             cota_b = "right"
 
-        posicoes.append(
-            PosicaoLance(
-                lance.indice, x, y, w, h_rect, sentido, cota_vaos, cota_b
-            )
+        posicao = PosicaoLance(
+            lance.indice, x, y, w, h_rect, sentido, cota_vaos, cota_b
         )
+        _reposicionar_fora_de_sobreposicao(posicao, posicoes)
+        posicoes.append(posicao)
 
     return posicoes
+
+
+def _sobreposicao_area(a: PosicaoLance, b: PosicaoLance) -> float:
+    x_overlap = max(0.0, min(a.x + a.w, b.x + b.w) - max(a.x, b.x))
+    y_overlap = max(0.0, min(a.y + a.h, b.y + b.h) - max(a.y, b.y))
+    return x_overlap * y_overlap
+
+
+def _ha_sobreposicao(pos: PosicaoLance, outras: list[PosicaoLance]) -> bool:
+    return any(_sobreposicao_area(pos, outra) > 1e-9 for outra in outras)
+
+
+def _reposicionar_fora_de_sobreposicao(
+    pos: PosicaoLance,
+    existentes: list[PosicaoLance],
+) -> None:
+    """Desloca o novo lance para fora do conjunto quando a espiral cruza a area existente."""
+    if not existentes or not _ha_sobreposicao(pos, existentes):
+        return
+
+    xmin = min(outra.x for outra in existentes)
+    xmax = max(outra.x + outra.w for outra in existentes)
+    ymin = min(outra.y for outra in existentes)
+    ymax = max(outra.y + outra.h for outra in existentes)
+
+    if pos.sentido == "up":
+        pos.x = xmin - pos.w
+    elif pos.sentido == "right":
+        pos.y = ymax
+    elif pos.sentido == "down":
+        pos.x = xmax
+    else:  # left
+        pos.y = ymin - pos.h
+
+
+def _validar_sem_sobreposicao(posicoes: list[PosicaoLance]) -> None:
+    conflitos: list[str] = []
+
+    for i, a in enumerate(posicoes):
+        for b in posicoes[i + 1:]:
+            if _sobreposicao_area(a, b) > 1e-9:
+                conflitos.append(f"{a.indice}-{b.indice}")
+
+    if conflitos:
+        raise ValueError(
+            "Layout invalido: os lances se sobrepoem no preview "
+            f"({', '.join(conflitos)}). Ajuste os comprimentos ou apoios."
+        )
 
 
 def _ajustar_adjacencias_de_apoio(
@@ -433,7 +518,12 @@ def _desenhar_lance(ax, lance: Lance, pos: PosicaoLance) -> None:
 
 # ---- API p\u00fablica --------------------------------------------------------
 
-def desenhar_escada(escada: Escada, ax=None, layout: LayoutDesenho = "horario"):
+def desenhar_escada(
+    escada: Escada,
+    ax=None,
+    layout: LayoutDesenho = "horario",
+    margem_relativa: float = 0.30,
+):
     """Renderiza a escada. Retorna a Figure matplotlib."""
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 10))
@@ -458,7 +548,7 @@ def desenhar_escada(escada: Escada, ax=None, layout: LayoutDesenho = "horario"):
         _cotar_b(ax, lance, pos, cota_offset)
 
     # Margem extra para acomodar as cotas externas
-    margem = diagonal * 0.30
+    margem = diagonal * margem_relativa
     ax.set_xlim(xmin - margem, xmax + margem)
     ax.set_ylim(ymin - margem, ymax + margem)
     ax.set_aspect("equal")

@@ -21,9 +21,13 @@ def escada_metallo() -> Escada:
         Lance 2: pilar + viga
         Lance 3: laje + viga   (n\u00e3o especificado; valor plaus\u00edvel)
     """
+    patamar_esquerdo = 1.255
+    escada_central = 1.375
+    patamar_direito = 1.250
+
     lance1 = Lance(
         indice=1,
-        b=1.37,
+        b=patamar_esquerdo,
         h=0.12,
         apoios=[
             Apoio(tipo="laje"),
@@ -40,19 +44,19 @@ def escada_metallo() -> Escada:
             Apoio(tipo="viga"),
         ],
         vaos=[
-            Vao(tipo="patamar", L=1.255),
-            Vao(tipo="escada", L=1.375),
-            Vao(tipo="patamar", L=1.250),
+            Vao(tipo="patamar", L=patamar_esquerdo),
+            Vao(tipo="escada", L=escada_central),
+            Vao(tipo="patamar", L=patamar_direito),
         ],
     )
     lance3 = Lance(
         indice=3,
-        b=1.37,
+        b=patamar_direito,
         h=0.12,
         apoios=[
             Apoio(tipo="laje"),
             Apoio(tipo="viga"),
         ],
-        vaos=[Vao(tipo="escada", L=1.375)],
+        vaos=[Vao(tipo="escada", L=escada_central)],
     )
     return Escada(laje_inicial=1, laje_final=2, lances=[lance1, lance2, lance3])

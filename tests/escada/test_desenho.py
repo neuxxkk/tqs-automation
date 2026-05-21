@@ -10,7 +10,12 @@ matplotlib.use("Agg")  # backend sem GUI
 import pytest
 
 from escada.defaults import escada_metallo
-from escada.desenho import desenhar_escada, posicionar_lances
+from escada.desenho import (
+    PosicaoLance,
+    _validar_sem_sobreposicao,
+    desenhar_escada,
+    posicionar_lances,
+)
 from escada.domain import Apoio, Escada, Lance, Vao
 
 
@@ -36,6 +41,44 @@ def test_posicionamento_lance_unico_na_origem():
     assert pos[0].sentido == "up"
 
 
+def test_posicionamento_2_lances_fica_empilhado_com_lance_1_embaixo():
+    escada = Escada(
+        laje_inicial=1,
+        laje_final=2,
+        lances=[
+            Lance(
+                indice=1,
+                b=1.10,
+                h=0.12,
+                apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+                vaos=[Vao(tipo="patamar", L=1.50), Vao(tipo="escada", L=0.90)],
+            ),
+            Lance(
+                indice=2,
+                b=1.25,
+                h=0.12,
+                apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+                vaos=[Vao(tipo="patamar", L=2.20)],
+            ),
+        ],
+    )
+
+    p1, p2 = posicionar_lances(escada, layout="horario")
+
+    assert p1.sentido == "right"
+    assert p2.sentido == "right"
+    assert p1.x == pytest.approx(0.0)
+    assert p2.x == pytest.approx(0.0)
+    assert p1.y == pytest.approx(0.0)
+    assert p2.y == pytest.approx(p1.y + p1.h)
+    assert p1.h == pytest.approx(1.10)
+    assert p2.h == pytest.approx(1.25)
+    assert p1.cota_vaos == "bottom"
+    assert p2.cota_vaos == "top"
+    assert p1.cota_b == "left"
+    assert p2.cota_b == "right"
+
+
 def test_posicionamento_metallo_3_lances():
     """Croqui do anexo: 2 embaixo/esquerda, 1 embaixo/direita, 3 em cima."""
     escada = escada_metallo()
@@ -47,7 +90,7 @@ def test_posicionamento_metallo_3_lances():
     assert p3.x == pytest.approx(0.0)
     assert p3.y == pytest.approx(max(p1.h, p2.h))
     assert p3.w == pytest.approx(1.375)
-    assert p3.h == pytest.approx(1.37)             # b3
+    assert p3.h == pytest.approx(1.250)             # b3 = L2,3
     assert p3.sentido == "right"
 
     # Lance 2 fica pendurado na esquerda da faixa superior.
@@ -59,7 +102,7 @@ def test_posicionamento_metallo_3_lances():
     # Lance 1 fica pendurado na direita da faixa superior.
     assert p1.x + p1.w == pytest.approx(p3.x + p3.w)
     assert p1.y + p1.h == pytest.approx(p3.y)
-    assert p1.w == pytest.approx(1.37)
+    assert p1.w == pytest.approx(1.255)             # b1 = L2,1
     assert p1.h == pytest.approx(0.55)
     assert p1.sentido == "up"
 
@@ -137,6 +180,65 @@ def test_quarto_lance_apoia_no_terceiro_abaixo_e_a_esquerda():
             x_overlap = max(0.0, min(a.x + a.w, b.x + b.w) - max(a.x, b.x))
             y_overlap = max(0.0, min(a.y + a.h, b.y + b.h) - max(a.y, b.y))
             assert x_overlap * y_overlap == pytest.approx(0.0)
+
+
+def test_espiral_com_quatro_lances_desiguais_nao_se_sobrepoe():
+    escada = Escada(
+        laje_inicial=1,
+        laje_final=2,
+        lances=[
+            Lance(
+                indice=1,
+                b=1.37,
+                h=0.12,
+                apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+                vaos=[Vao(tipo="escada", L=0.55), Vao(tipo="patamar", L=1.95)],
+            ),
+            Lance(
+                indice=2,
+                b=1.215,
+                h=0.12,
+                apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+                vaos=[
+                    Vao(tipo="patamar", L=1.255),
+                    Vao(tipo="escada", L=1.375),
+                    Vao(tipo="patamar", L=1.250),
+                ],
+            ),
+            Lance(
+                indice=3,
+                b=1.37,
+                h=0.12,
+                apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+                vaos=[Vao(tipo="escada", L=1.375)],
+            ),
+            Lance(
+                indice=4,
+                b=1.20,
+                h=0.12,
+                apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+                vaos=[Vao(tipo="patamar", L=2.00)],
+            ),
+        ],
+    )
+
+    posicoes = posicionar_lances(escada, layout="horario")
+
+    for i, a in enumerate(posicoes):
+        for b in posicoes[i + 1:]:
+            x_overlap = max(0.0, min(a.x + a.w, b.x + b.w) - max(a.x, b.x))
+            y_overlap = max(0.0, min(a.y + a.h, b.y + b.h) - max(a.y, b.y))
+            assert x_overlap * y_overlap == pytest.approx(0.0)
+
+
+def test_validacao_bloqueia_lances_sobrepostos():
+    with pytest.raises(ValueError, match="se sobrepoem"):
+        _validar_sem_sobreposicao(
+            [
+                PosicaoLance(1, 0.0, 0.0, 2.0, 1.0, "right", "top", "left"),
+                PosicaoLance(2, 1.0, 0.0, 2.0, 1.0, "right", "top", "right"),
+            ]
+        )
 
 
 def test_lance_que_apoia_em_outro_encosta_no_lance_referenciado():

@@ -62,8 +62,7 @@ THEME_CSS = """
     section[data-testid="stSidebar"] h2,
     section[data-testid="stSidebar"] h3,
     section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] span {
+    section[data-testid="stSidebar"] label {
         color: var(--branco);
     }
 
@@ -102,6 +101,16 @@ THEME_CSS = """
 
     section[data-testid="stSidebar"] [data-testid="stExpander"] details {
         background: transparent;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stExpander"] summary,
+    section[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover,
+    section[data-testid="stSidebar"] [data-testid="stExpander"] summary:focus-visible,
+    section[data-testid="stSidebar"] [data-testid="stExpander"] summary > div,
+    section[data-testid="stSidebar"] [data-testid="stExpander"] summary > div:hover,
+    section[data-testid="stSidebar"] [data-testid="stExpander"] details[open] > summary,
+    section[data-testid="stSidebar"] [data-testid="stExpander"] details[open] > summary > div {
+        background: transparent !important;
     }
 
     section[data-testid="stSidebar"] [data-testid="stExpander"] summary,
@@ -342,9 +351,9 @@ THEME_CSS = """
         display: inline-block;
         font-family: 'JetBrains Mono', monospace;
         font-size: 0.76rem;
-        color: var(--verde-texto);
-        background: var(--verde-texto);
-        border: 1px solid rgba(39, 80, 10, 0.1);
+        color: var(--verde-claro);
+        background: var(--verde-hover);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 999px;
         padding: 0.2rem 0.55rem;
         margin-top: 0.7rem;

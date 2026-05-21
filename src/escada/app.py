@@ -10,14 +10,15 @@ if __package__ in (None, ""):
 
 from escada.calculos import carregamento_lance
 from escada.defaults import edificio_metallo, escada_metallo
-from escada.desenho import desenhar_escada
+from escada.desenho import desenhar_escada, posicionar_lances
 from escada.domain import Apoio, Edificio, Escada, Lance, Vao
 from escada.memoria import gerar_memoria_markdown, gerar_memoria_pdf
 from ui import inject_formula_theme, render_page_header, render_sidebar_brand
 
 
-DEFAULTS_REV = "metallo_imagem_v3"
+DEFAULTS_REV = "metallo_imagem_v4"
 POSICOES_HORARIAS = ["9h", "12h", "3h", "6h"]
+LAST_N_LANCES_KEY = f"{DEFAULTS_REV}_last_n_lances"
 
 
 def _descricao_fluxo_horario(n_lances: int) -> str:
@@ -46,7 +47,41 @@ def _opcoes_apoio(indice_lance: int, n_lances: int) -> list[str]:
     return opcoes
 
 
-def _default_lance(indice: int) -> Lance:
+def _lances_padrao_dois_lances() -> list[Lance]:
+    total_retangulo = 3.85
+    escada_central = 1.35
+    patamar = round((total_retangulo - escada_central) / 2, 3)
+
+    return [
+        Lance(
+            indice=1,
+            b=1.37,
+            h=0.12,
+            apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+            vaos=[
+                Vao(tipo="patamar", L=patamar),
+                Vao(tipo="escada", L=escada_central),
+                Vao(tipo="patamar", L=patamar),
+            ],
+        ),
+        Lance(
+            indice=2,
+            b=1.215,
+            h=0.12,
+            apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
+            vaos=[
+                Vao(tipo="patamar", L=patamar),
+                Vao(tipo="escada", L=escada_central),
+                Vao(tipo="patamar", L=patamar),
+            ],
+        ),
+    ]
+
+
+def _default_lance(indice: int, n_lances: int) -> Lance:
+    if n_lances == 2:
+        return _lances_padrao_dois_lances()[indice - 1]
+
     padrao = escada_metallo().lances
     if indice <= len(padrao):
         return padrao[indice - 1]
@@ -62,12 +97,32 @@ def _default_lance(indice: int) -> Lance:
     )
 
 
+def _seed_lance_state(indice: int, lance: Lance) -> None:
+    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_apoio_1"] = _apoio_para_opcao(lance.apoios[0])
+    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_apoio_2"] = _apoio_para_opcao(lance.apoios[1])
+    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_b"] = float(lance.b)
+    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_h"] = float(lance.h)
+    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_n_vaos"] = len(lance.vaos)
+
+    for j, vao in enumerate(lance.vaos, start=1):
+        st.session_state[f"{DEFAULTS_REV}_lance_{indice}_vao_{j}_tipo"] = vao.tipo
+        st.session_state[f"{DEFAULTS_REV}_lance_{indice}_vao_{j}_L"] = float(vao.L)
+
+
+def _sincronizar_defaults_por_quantidade(n_lances: int) -> None:
+    ultimo_n_lances = st.session_state.get(LAST_N_LANCES_KEY)
+    if ultimo_n_lances != n_lances and n_lances == 2:
+        for indice, lance in enumerate(_lances_padrao_dois_lances(), start=1):
+            _seed_lance_state(indice, lance)
+    st.session_state[LAST_N_LANCES_KEY] = n_lances
+
+
 def _indice_padrao(opcoes: list[str], valor: str) -> int:
     return opcoes.index(valor) if valor in opcoes else 0
 
 
 def _entrada_lance(indice: int, n_lances: int) -> Lance:
-    padrao = _default_lance(indice)
+    padrao = _default_lance(indice, n_lances)
     opcoes = _opcoes_apoio(indice, n_lances)
 
     apoio1 = st.selectbox(
@@ -209,6 +264,7 @@ def _build_sidebar() -> tuple[Edificio, Escada]:
     )
     st.sidebar.caption("Fluxo horario:")
     st.sidebar.caption(_descricao_fluxo_horario(int(n_lances)))
+    _sincronizar_defaults_por_quantidade(int(n_lances))
 
     st.sidebar.subheader("Lances")
     lances: list[Lance] = []
@@ -235,7 +291,7 @@ def _render_summary(edificio: Edificio, escada: Escada) -> None:
 
 
 def _render_preview(escada: Escada) -> None:
-    fig = desenhar_escada(escada, layout="horario")
+    fig = desenhar_escada(escada, layout="horario", margem_relativa=0.40)
     st.pyplot(fig, clear_figure=True, use_container_width=True)
 
 
@@ -255,6 +311,7 @@ def main() -> None:
     with st.sidebar:
         try:
             edificio, escada = _build_sidebar()
+            posicionar_lances(escada, layout="horario")
         except ValueError as exc:
             st.error(str(exc))
             st.stop()
