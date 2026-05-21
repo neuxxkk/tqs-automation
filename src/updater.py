@@ -182,7 +182,8 @@ def _close_running_app(app_pid: int) -> None:
 
     if os.name == "nt":
         subprocess.run(
-            ["taskkill", "/PID", str(app_pid), "/T", "/F"],
+            # Nao use /T aqui: o updater e filho da central e seria encerrado junto.
+            ["taskkill", "/PID", str(app_pid), "/F"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
