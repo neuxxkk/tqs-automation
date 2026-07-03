@@ -2,7 +2,7 @@
 [Setup]
 AppId={{8B380ABE-A4E5-4D7E-B5FA-A3BFB9E1E615}
 AppName=Scripts Formula
-AppVersion=2.3.2
+AppVersion=2.4.0
 AppPublisher=Vitor Neuenschwander
 DefaultDirName={autopf}\Scripts Formula
 DefaultGroupName=Scripts Formula
@@ -25,7 +25,7 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Source: "..\assets\*";    DestDir: "{app}\assets";    Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\src\*";       DestDir: "{app}\src";       Excludes: "__pycache__\*,*\__pycache__\*,*.pyc"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "..\launchers\*"; DestDir: "{app}\launchers"; Flags: recursesubdirs createallsubdirs ignoreversion
-Source: "..\audit\*";     DestDir: "{app}\audit";     Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\audit\*";     DestDir: "{app}\audit";     Excludes: "arquivos_teste\*,*.backup_*.xlsm"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "post_install.bat";     DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "post_install_gui.pyw"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "..\version.txt"; DestDir: "{app}";           Flags: ignoreversion

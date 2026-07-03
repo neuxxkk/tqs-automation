@@ -6,3 +6,4 @@ audit/arquivos_teste/
 debug_*.png
 *.log
 ~$*.xls*
+*.backup_*.xlsm
