@@ -317,6 +317,11 @@ Public Function BuildLanceFilterSet(ByVal rawText As String) As Object
         Exit Function
     End If
 
+    cleaned = Replace(cleaned, ";", ",")
+    cleaned = Replace(cleaned, vbCrLf, ",")
+    cleaned = Replace(cleaned, vbCr, ",")
+    cleaned = Replace(cleaned, vbLf, ",")
+
     Dim parts() As String
     parts = Split(cleaned, ",")
 
@@ -341,6 +346,11 @@ Public Function PromptSeleLanceFilter(ByVal availableList As String, ByVal sugge
     If availableDisplay = "" Then availableDisplay = availableList
     suggestedDisplay = Trim$(suggestedDetails)
     If suggestedDisplay = "" Then suggestedDisplay = suggestedList
+
+    If Trim$(suggestedList) = "" Then
+        PromptSeleLanceFilter = ""
+        Exit Function
+    End If
 
     If suggestedList <> "" And suggestedList <> availableList Then
         choice = MsgBox( _

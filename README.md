@@ -57,12 +57,10 @@ assets/
 
 audit/
   auditoria_armpil_sele.xlsm
-  *.bas / *.cls             macros e lógica VBA da auditoria
+  *.bas / *.cls / *.frm     macros e lógica VBA da auditoria
 
 docs/
-  backlog.md
-  frontend_design.md
-  escada/                   documentos de apoio
+  frontend_design.md        diretrizes visuais
 
 installer/
   setup.iss                 script Inno Setup
@@ -89,7 +87,7 @@ src/
   ui/                       tema e componentes Streamlit
 
 tests/
-  escada/                   testes de domínio, cálculo, desenho e memória
+  escada/                   testes de domínio, cálculo e memória
   test_armpil_extractor.py  testes do extrator ARMPIL
 ```
 
@@ -125,7 +123,7 @@ python .\src\armpil_extractor.py
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install xlsxwriter pillow streamlit==1.56.0 fpdf2 matplotlib PyMuPDF rapidocr_onnxruntime
+python -m pip install xlsxwriter pillow streamlit==1.56.0 fpdf2 PyMuPDF rapidocr_onnxruntime
 ```
 
 Se precisar replicar a integração com TQS:
@@ -154,6 +152,7 @@ powershell -ExecutionPolicy Bypass -File .\installer\build.ps1
 - As apps Streamlit de Beiral e Escadas compartilham padrão visual e componentes em `src/ui/`.
 - A auditoria ARMPIL depende de macros habilitadas no Excel.
 - O processamento TQS depende da instalação local do TQS e do módulo Python disponível no ambiente (`TQSBuild`, `TQSExec`).
+- `beiral/` e `escada/` exportam memoria em PDF via `fpdf2`.
 
 ## Licença
 

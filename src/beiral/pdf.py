@@ -36,7 +36,12 @@ def gerar_pdf_relatorio(entrada: EntradaBeiral, resultado: ResultadoBeiral) -> b
     pdf.cell(30, 8, "PROJETO:", 1, 0, "L", fill=True)
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 8, f" {entrada.nome_projeto}", 1, 1, "L")
-    
+
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(30, 8, "PAVIMENTO:", 1, 0, "L", fill=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 8, f" {entrada.pavimento.strip() or '-'}", 1, 1, "L")
+
     pdf.set_font("Arial", "B", 10)
     pdf.cell(30, 8, "ELEMENTO:", 1, 0, "L", fill=True)
     pdf.set_font("Arial", "", 10)

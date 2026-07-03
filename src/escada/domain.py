@@ -1,100 +1,79 @@
-"""Modelo de dom\u00ednio do c\u00e1lculo de escadas."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Literal, Optional
+import re
+from dataclasses import dataclass
 
 
-TipoApoio = Literal["laje", "viga", "pilar", "lance"]
-TipoVao = Literal["patamar", "escada"]
+PESO_ESPECIFICO_CONCRETO_TF_M3 = 2.5
 
 
-@dataclass
-class Edificio:
-    nome: str
-    fck: float        # MPa
-    cp: float         # tF/m\u00b2 - carga permanente
-    ca: float         # tF/m\u00b2 - carga acidental
+@dataclass(slots=True)
+class EntradaEscada:
+    """
+    Dados de entrada para o memorial simplificado de carregamentos de escada.
+    """
+    nome_projeto: str
+    laje_inicial: int
+    laje_final: int
+    espessura_patamar_cm: float
+    espessura_escada_cm: float
+    carga_permanente_patamar_tf_m2: float
+    carga_acidental_patamar_tf_m2: float
+    carga_permanente_escada_tf_m2: float
+    carga_acidental_escada_tf_m2: float
 
 
-@dataclass
-class Apoio:
-    tipo: TipoApoio
-    # Quando tipo == "lance", refer\u00eancia 1-based ao lance que serve de apoio.
-    referencia_lance: Optional[int] = None
-
-    def __post_init__(self) -> None:
-        if self.tipo == "lance" and self.referencia_lance is None:
-            raise ValueError("Apoio do tipo 'lance' exige referencia_lance.")
-        if self.tipo != "lance" and self.referencia_lance is not None:
-            raise ValueError(
-                f"Apoio do tipo '{self.tipo}' n\u00e3o deve ter referencia_lance."
-            )
+@dataclass(slots=True)
+class ResultadoEscada:
+    espessura_patamar_m: float
+    espessura_escada_m: float
+    peso_proprio_patamar_tf_m2: float
+    peso_proprio_escada_tf_m2: float
+    carga_total_patamar_tf_m2: float
+    carga_total_escada_tf_m2: float
 
 
-@dataclass
-class Vao:
-    tipo: TipoVao
-    L: float          # comprimento em metros
+def validar_entrada(entrada: EntradaEscada) -> list[str]:
+    erros: list[str] = []
+
+    if not entrada.nome_projeto.strip():
+        erros.append("Informe o nome do projeto.")
+
+    if entrada.laje_inicial < 0:
+        erros.append("A laje inicial nao pode ser negativa.")
+
+    if entrada.laje_final < 0:
+        erros.append("A laje final nao pode ser negativa.")
+
+    if entrada.laje_final <= entrada.laje_inicial:
+        erros.append("A laje final deve ser pelo menos uma unidade maior que a laje inicial.")
+
+    if entrada.espessura_patamar_cm <= 0:
+        erros.append("A espessura do patamar deve ser maior que zero.")
+
+    if entrada.espessura_escada_cm <= 0:
+        erros.append("A espessura da escada deve ser maior que zero.")
+
+    if entrada.carga_permanente_patamar_tf_m2 < 0:
+        erros.append("A carga permanente do patamar nao pode ser negativa.")
+
+    if entrada.carga_acidental_patamar_tf_m2 < 0:
+        erros.append("A carga acidental do patamar nao pode ser negativa.")
+
+    if entrada.carga_permanente_escada_tf_m2 < 0:
+        erros.append("A carga permanente da escada nao pode ser negativa.")
+
+    if entrada.carga_acidental_escada_tf_m2 < 0:
+        erros.append("A carga acidental da escada nao pode ser negativa.")
+
+    return erros
 
 
-@dataclass
-class Lance:
-    indice: int                   # 1-based
-    b: float                      # largura (m)
-    h: float                      # altura da laje (m)
-    apoios: list[Apoio]           # exatamente 2
-    vaos: list[Vao] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        if len(self.apoios) != 2:
-            raise ValueError(
-                f"Lance {self.indice}: deve ter exatamente 2 apoios "
-                f"(recebido {len(self.apoios)})."
-            )
-        if not self.vaos:
-            raise ValueError(f"Lance {self.indice}: deve ter pelo menos 1 v\u00e3o.")
-
-    @property
-    def comprimento_total(self) -> float:
-        return sum(v.L for v in self.vaos)
-
-    @property
-    def apoia_em_lance(self) -> bool:
-        """True se algum dos apoios deste lance \u00e9 outro lance."""
-        return any(a.tipo == "lance" for a in self.apoios)
+def sanitize_filename_component(value: str) -> str:
+    cleaned = re.sub(r"\s+", "_", value.strip())
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "", cleaned)
+    return cleaned or "escada"
 
 
-@dataclass
-class Escada:
-    laje_inicial: int             # ex.: 1 (1\u00aa laje)
-    laje_final: int               # ex.: 2 (2\u00aa laje)
-    lances: list[Lance]
-
-    def __post_init__(self) -> None:
-        if not self.lances:
-            raise ValueError("Escada deve ter pelo menos 1 lance.")
-        indices = [l.indice for l in self.lances]
-        if indices != list(range(1, len(self.lances) + 1)):
-            raise ValueError(
-                f"Lances devem ter \u00edndices sequenciais 1..N (recebido {indices})."
-            )
-        # Valida refer\u00eancias de apoios em lances.
-        n = len(self.lances)
-        for lance in self.lances:
-            for apoio in lance.apoios:
-                if apoio.tipo == "lance":
-                    ref = apoio.referencia_lance
-                    if ref == lance.indice:
-                        raise ValueError(
-                            f"Lance {lance.indice} n\u00e3o pode apoiar em si mesmo."
-                        )
-                    if not (1 <= (ref or 0) <= n):
-                        raise ValueError(
-                            f"Lance {lance.indice}: refer\u00eancia de apoio "
-                            f"{ref} fora do intervalo 1..{n}."
-                        )
-
-    @property
-    def n_lances(self) -> int:
-        return len(self.lances)
+def formatar_pavimento(laje_inicial: int, laje_final: int) -> str:
+    return f"{laje_inicial}ª laje - {laje_final}ª laje"

@@ -1,235 +1,159 @@
-"""Geracao da memoria de calculo."""
 from __future__ import annotations
 
-from io import BytesIO
+import os
+import tempfile
 
-from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+from .domain import EntradaEscada, ResultadoEscada, formatar_pavimento
 
-from .calculos import DEGRAU, carregamento_lance
-from .desenho import LayoutDesenho, desenhar_escada
-from .domain import Apoio, Edificio, Escada, Lance
+try:
+    from fpdf import FPDF
 
-
-def _fmt(x: float) -> str:
-    return f"{x:.3f}".replace(".", ",")
-
-
-def _subscrito(valor: int | str) -> str:
-    mapa = str.maketrans("0123456789-", "₀₁₂₃₄₅₆₇₈₉₋")
-    return str(valor).translate(mapa)
+    HAS_FPDF = True
+except ImportError:
+    FPDF = None
+    HAS_FPDF = False
 
 
-def _apoio_texto(apoio: Apoio) -> str:
-    if apoio.tipo == "lance":
-        return f"lance {apoio.referencia_lance}"
-    return apoio.tipo
+def pdf_disponivel() -> bool:
+    return HAS_FPDF
 
 
-def _apoios_lance(lance: Lance) -> str:
-    return " + ".join(_apoio_texto(apoio) for apoio in lance.apoios)
+def _image_suffix(mime_type: str | None) -> str:
+    if mime_type == "image/png":
+        return ".png"
+    if mime_type in {"image/jpeg", "image/jpg"}:
+        return ".jpg"
+    return ".img"
 
 
-def _l(lance: int, vao: int) -> str:
-    return f"L{_subscrito(f'{lance},{vao}')}"
+def _adicionar_imagem(pdf: FPDF, imagem_bytes: bytes | None, mime_type: str | None, x: float, y: float) -> None:
+    if not imagem_bytes:
+        pdf.set_font("Arial", "I", 9)
+        pdf.set_text_color(110, 110, 110)
+        pdf.set_xy(x + 6, y + 29)
+        pdf.cell(73, 6, "Imagem da escada nao informada", 0, 0, "C")
+        pdf.set_text_color(0, 0, 0)
+        return
+
+    suffix = _image_suffix(mime_type)
+    if suffix == ".img":
+        pdf.set_font("Arial", "I", 9)
+        pdf.set_text_color(110, 110, 110)
+        pdf.set_xy(x + 6, y + 29)
+        pdf.cell(73, 6, "Formato de imagem nao suportado no PDF", 0, 0, "C")
+        pdf.set_text_color(0, 0, 0)
+        return
+
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_img:
+            tmp_img.write(imagem_bytes)
+            tmp_path = tmp_img.name
+        pdf.image(tmp_path, x=x + 3, y=y + 3, w=79, h=59)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
-def _pp(lance: int) -> str:
-    return f"PP{_subscrito(lance)}"
+def gerar_pdf_relatorio(
+    entrada: EntradaEscada,
+    resultado: ResultadoEscada,
+    imagem_bytes: bytes | None = None,
+    imagem_mime_type: str | None = None,
+) -> bytes:
+    if not HAS_FPDF:
+        raise RuntimeError("A biblioteca fpdf nao esta instalada.")
 
+    pdf = FPDF()
+    pdf.set_auto_page_break(False, margin=0)
+    pdf.add_page()
 
-def _q(lance: int, vao: int) -> str:
-    return f"q{_subscrito(f'{lance},{vao}')}"
+    pdf.set_font("Arial", "B", 14)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 12, "MEMORIA DE CALCULO ESTRUTURAL: ESCADA", 1, 1, "C", fill=True)
+    pdf.ln(5)
 
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(30, 8, "PROJETO:", 1, 0, "L", fill=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 8, f" {entrada.nome_projeto}", 1, 1, "L")
 
-def _linhas_carregamento(edificio: Edificio, escada: Escada) -> list[dict[str, str]]:
-    linhas: list[dict[str, str]] = []
-    for lance in escada.lances:
-        carga = carregamento_lance(edificio, lance)
-        for vao in carga.vaos:
-            parcela_degrau = f" + {_fmt(DEGRAU)}" if vao.tipo == "escada" else ""
-            desenvolvimento = (
-                f"{_q(carga.indice, vao.indice)} = {_fmt(edificio.cp)} + "
-                f"{_fmt(edificio.ca)} + {_pp(carga.indice)}{parcela_degrau} = "
-                f"{_fmt(vao.q)}"
-            )
-            linhas.append(
-                {
-                    "lance": str(carga.indice),
-                    "vao": str(vao.indice),
-                    "tipo": vao.tipo,
-                    "L": _fmt(vao.L),
-                    "pp": _fmt(carga.pp),
-                    "q": _fmt(vao.q),
-                    "desenvolvimento": desenvolvimento,
-                }
-            )
-    return linhas
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(30, 8, "PAVIMENTO:", 1, 0, "L", fill=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 8, f" {formatar_pavimento(entrada.laje_inicial, entrada.laje_final)}", 1, 1, "L")
+    pdf.ln(10)
 
+    y_imagem = pdf.get_y()
+    pdf.set_draw_color(180, 180, 180)
+    pdf.rect(10, y_imagem, 85, 65)
+    _adicionar_imagem(pdf, imagem_bytes, imagem_mime_type, 10, y_imagem)
 
-def _linhas_desenvolvimento(edificio: Edificio, escada: Escada) -> list[str]:
-    linhas: list[str] = []
-    for lance in escada.lances:
-        carga = carregamento_lance(edificio, lance)
-        linhas.append(
-            f"{_pp(lance.indice)} = 2,5 × {_fmt(lance.h)} = "
-            f"{_fmt(carga.pp)} tF·m⁻²"
-        )
-        for vao in carga.vaos:
-            parcela_degrau = f" + {_fmt(DEGRAU)}" if vao.tipo == "escada" else ""
-            linhas.append(
-                f"{_q(carga.indice, vao.indice)} = {_fmt(edificio.cp)} + "
-                f"{_fmt(edificio.ca)} + {_pp(carga.indice)}{parcela_degrau} = "
-                f"{_fmt(vao.q)} tF·m⁻²"
-            )
-    return linhas
+    x_calc = 105
+    pdf.set_xy(x_calc, y_imagem)
 
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(0, 6, "1. CARGAS DISTRIBUIDAS (Q)", 0, 1, "L")
+    pdf.ln(1)
 
-def gerar_memoria_markdown(edificio: Edificio, escada: Escada) -> str:
-    """Gera a memoria de calculo em Markdown."""
-    linhas: list[str] = [
-        f"# Memória de cálculo da {escada.laje_inicial}ª à {escada.laje_final}ª laje - {edificio.nome}",
-        "",
-        "## Carregamentos",
-        "",
-        "| Lance | Vão | Tipo | L (m) | PPᵢ (tF·m⁻²) | qᵢ,ⱼ (tF·m⁻²) | Desenvolvimento |",
-        "|---:|---:|---|---:|---:|---:|---|",
-    ]
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_x(x_calc)
+    pdf.cell(0, 5, "PATAMAR", 0, 1, "L")
+    pdf.set_font("Arial", "", 9)
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 5, f"- CP geral: {entrada.carga_permanente_patamar_tf_m2:.3f} tf/m2", 0, 1, "L")
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 5, f"- CA geral: {entrada.carga_acidental_patamar_tf_m2:.3f} tf/m2", 0, 1, "L")
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 5, f"- Peso proprio: 2.5 x {resultado.espessura_patamar_m:.2f} = {resultado.peso_proprio_patamar_tf_m2:.3f} tf/m2", 0, 1, "L")
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 7, f"TOTAL Q patamar = {resultado.carga_total_patamar_tf_m2:.3f} tf/m2", 0, 1, "L")
+    pdf.ln(3)
 
-    for linha in _linhas_carregamento(edificio, escada):
-        linhas.append(
-            f"| {linha['lance']} | {linha['vao']} | {linha['tipo']} | "
-            f"{linha['L']} | {linha['pp']} | {linha['q']} | "
-            f"{linha['desenvolvimento']} |"
-        )
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_x(x_calc)
+    pdf.cell(0, 5, "ESCADA", 0, 1, "L")
+    pdf.set_font("Arial", "", 9)
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 5, f"- CP geral: {entrada.carga_permanente_escada_tf_m2:.3f} tf/m2", 0, 1, "L")
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 5, f"- CA geral: {entrada.carga_acidental_escada_tf_m2:.3f} tf/m2", 0, 1, "L")
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 5, f"- Peso proprio: 2.5 x {resultado.espessura_escada_m:.2f} = {resultado.peso_proprio_escada_tf_m2:.3f} tf/m2", 0, 1, "L")
+    pdf.set_font("Arial", "B", 9)
+    pdf.set_x(x_calc + 5)
+    pdf.cell(0, 7, f"TOTAL Q escada = {resultado.carga_total_escada_tf_m2:.3f} tf/m2", 0, 1, "L")
 
-    linhas.extend(["", "## Desenvolvimento dos cálculos", ""])
-    linhas.extend(f"- {linha}" for linha in _linhas_desenvolvimento(edificio, escada))
+    pdf.set_xy(10, y_imagem + 75)
+    pdf.set_font("Arial", "B", 11)
+    pdf.set_fill_color(245, 245, 245)
+    pdf.cell(0, 10, f" Q patamar = {resultado.carga_total_patamar_tf_m2:.3f} tf/m2  |  Q escada = {resultado.carga_total_escada_tf_m2:.3f} tf/m2", 1, 1, "L", fill=True)
 
-    return "\n".join(linhas) + "\n"
+    pdf.ln(4)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(32, 9, "As adotado:", 1, 0, "L", fill=True)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 9, "", 1, 1, "L")
 
+    pdf.set_y(250)
+    pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 5, "Relatorio gerado automaticamente pelo Sistema de Automacao TQS", 0, 0, "C")
 
-def _caixa(ax, titulo: str) -> None:
-    ax.axis("off")
-    ax.add_patch(
-        Rectangle(
-            (0, 0),
-            1,
-            1,
-            transform=ax.transAxes,
-            facecolor="#fbfbfb",
-            edgecolor="#d0d0d0",
-            linewidth=0.8,
-        )
-    )
-    ax.text(0.035, 0.93, titulo, fontsize=9.5, weight="bold", va="top")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        pdf.output(tmp.name)
+        tmp.seek(0)
+        pdf_bytes = tmp.read()
 
-
-def _desenhar_textos(ax, linhas: list[str], y0: float = 0.78, fontsize: float = 8.2) -> None:
-    y = y0
-    for linha in linhas:
-        ax.text(0.045, y, linha, fontsize=fontsize, va="top")
-        y -= 0.13
-
-
-def _pagina_resumo_pdf(
-    pdf: PdfPages,
-    edificio: Edificio,
-    escada: Escada,
-    layout: LayoutDesenho,
-) -> None:
-    fig = plt.figure(figsize=(11.69, 8.27))
-    fig.patch.set_facecolor("white")
-    fig.text(
-        0.045,
-        0.955,
-        f"Memória de cálculo da {escada.laje_inicial}ª à {escada.laje_final}ª laje",
-        fontsize=16,
-        weight="bold",
-    )
-    fig.text(0.045, 0.925, edificio.nome, fontsize=10, color="#4a4a4a")
-
-    ax_desenho = fig.add_axes([0.60, 0.28, 0.34, 0.56])
-    desenhar_escada(escada, ax=ax_desenho, layout=layout)
-    ax_desenho.set_title("Desenho esquemático", fontsize=10, pad=8)
-
-    ax_tabela = fig.add_axes([0.045, 0.47, 0.52, 0.38])
-    ax_tabela.axis("off")
-    rows = _linhas_carregamento(edificio, escada)
-    tabela = [
-        [r["lance"], r["vao"], r["tipo"], r["L"], r["pp"], r["q"]]
-        for r in rows
-    ]
-    table = ax_tabela.table(
-        cellText=tabela,
-        colLabels=["Lance", "Vão", "Tipo", "L (m)", "PPᵢ", "qᵢ,ⱼ"],
-        loc="upper left",
-        cellLoc="center",
-        colLoc="center",
-        colWidths=[0.12, 0.10, 0.18, 0.15, 0.15, 0.15],
-    )
-    table.auto_set_font_size(False)
-    table.set_fontsize(7.5)
-    table.scale(1, 1.15)
-    for (row, _col), cell in table.get_celld().items():
-        cell.set_edgecolor("#c8c8c8")
-        cell.set_linewidth(0.6)
-        if row == 0:
-            cell.set_facecolor("#eeeeee")
-            cell.set_text_props(weight="bold")
-
-    ax_calc = fig.add_axes([0.045, 0.08, 0.90, 0.31])
-    _caixa(ax_calc, "Desenvolvimento dos cálculos")
-    linhas = _linhas_desenvolvimento(edificio, escada)
-    colunas = 2 if len(linhas) > 7 else 1
-    linhas_por_coluna = (len(linhas) + colunas - 1) // colunas
-    fontsize = 8.1 if len(linhas) <= 10 else 7.2
-    for idx, linha in enumerate(linhas):
-        coluna = idx // linhas_por_coluna
-        linha_idx = idx % linhas_por_coluna
-        x = 0.045 + coluna * 0.47
-        y = 0.78 - linha_idx * 0.115
-        ax_calc.text(x, y, linha, fontsize=fontsize, va="top")
-
-    pdf.savefig(fig, bbox_inches="tight")
-    plt.close(fig)
-
-
-def _pagina_desenvolvimento_pdf(pdf: PdfPages, edificio: Edificio, escada: Escada) -> None:
-    linhas = _linhas_desenvolvimento(edificio, escada)
-    fig = plt.figure(figsize=(11.69, 8.27))
-    fig.patch.set_facecolor("white")
-    fig.text(0.045, 0.955, "Desenvolvimento dos cálculos", fontsize=15, weight="bold")
-
-    ax = fig.add_axes([0.045, 0.08, 0.90, 0.82])
-    _caixa(ax, "Expressões por lance e vão")
-    y = 0.87
-    for linha in linhas:
-        ax.text(0.045, y, linha, fontsize=9, va="top")
-        y -= 0.065
-        if y < 0.08:
-            pdf.savefig(fig, bbox_inches="tight")
-            plt.close(fig)
-            fig = plt.figure(figsize=(11.69, 8.27))
-            fig.patch.set_facecolor("white")
-            fig.text(0.045, 0.955, "Desenvolvimento dos cálculos", fontsize=15, weight="bold")
-            ax = fig.add_axes([0.045, 0.08, 0.90, 0.82])
-            _caixa(ax, "Expressões por lance e vão")
-            y = 0.87
-
-    pdf.savefig(fig, bbox_inches="tight")
-    plt.close(fig)
+    os.remove(tmp.name)
+    return pdf_bytes
 
 
 def gerar_memoria_pdf(
-    edificio: Edificio,
-    escada: Escada,
-    layout: LayoutDesenho = "horario",
+    entrada: EntradaEscada,
+    resultado: ResultadoEscada,
+    imagem_bytes: bytes | None = None,
+    imagem_mime_type: str | None = None,
 ) -> bytes:
-    """Gera um PDF com resumo, tabela, desenho e desenvolvimento."""
-    buffer = BytesIO()
-    with PdfPages(buffer) as pdf:
-        _pagina_resumo_pdf(pdf, edificio, escada, layout)
-
-    return buffer.getvalue()
+    return gerar_pdf_relatorio(entrada, resultado, imagem_bytes, imagem_mime_type)

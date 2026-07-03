@@ -47,8 +47,18 @@ THEME_CSS = """
     section[data-testid="stSidebar"] {
         background: var(--cinza-900);
         border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    section[data-testid="stSidebar"][aria-expanded="true"] {
         min-width: 420px !important;
         max-width: 420px !important;
+    }
+
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        min-width: 0 !important;
+        max-width: 0 !important;
+        width: 0 !important;
+        border-right: 0;
     }
 
     section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
@@ -71,9 +81,19 @@ THEME_CSS = """
     section[data-testid="stSidebar"] [data-baseweb="select"] input,
     section[data-testid="stSidebar"] [data-baseweb="select"] div {
         color: var(--cinza-800) !important;
+        caret-color: var(--verde-hover) !important;
+        -webkit-text-fill-color: var(--cinza-800) !important;
+    }
+
+    section[data-testid="stSidebar"] input,
+    section[data-testid="stSidebar"] textarea {
+        color: var(--cinza-800) !important;
+        caret-color: var(--verde-hover) !important;
+        -webkit-text-fill-color: var(--cinza-800) !important;
     }
 
     section[data-testid="stSidebar"] [data-baseweb="select"] > div,
+    section[data-testid="stSidebar"] [data-baseweb="input"] > div,
     section[data-testid="stSidebar"] [data-baseweb="base-input"] > div,
     section[data-testid="stSidebar"] [data-testid="stNumberInput"] [data-baseweb="input"] > div {
         background: rgba(255, 255, 255, 0.96);
@@ -125,6 +145,21 @@ THEME_CSS = """
 
     section[data-testid="stSidebar"] button {
         color: var(--cinza-800);
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stNumberInput"] button,
+    section[data-testid="stSidebar"] [data-testid="stNumberInput"] button:hover,
+    section[data-testid="stSidebar"] [data-testid="stNumberInput"] button:focus,
+    section[data-testid="stSidebar"] [data-testid="stNumberInput"] button:active {
+        color: var(--cinza-800) !important;
+        background: rgba(255, 255, 255, 0.98) !important;
+        border-color: rgba(0, 0, 0, 0.14) !important;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stNumberInput"] button svg {
+        color: var(--cinza-800) !important;
+        fill: currentColor !important;
+        stroke: currentColor !important;
     }
 
     section[data-testid="stSidebar"] [data-baseweb="popover"] *,
@@ -289,6 +324,60 @@ THEME_CSS = """
         padding: 0.9rem 1rem;
         color: var(--cinza-800);
         line-height: 1.65;
+    }
+
+    .formula-upload-preview {
+        background: var(--branco);
+        border: 1px solid var(--cinza-300);
+        border-radius: 6px;
+        padding: 0.5rem;
+    }
+
+    .formula-upload-preview img {
+        display: block;
+        width: 100%;
+        max-height: 520px;
+        object-fit: contain;
+    }
+
+    .formula-load-grid {
+        display: grid;
+        gap: 0.65rem;
+    }
+
+    .formula-load-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.9rem;
+        background: var(--branco);
+        border: 1px solid var(--cinza-300);
+        border-left: 4px solid var(--verde-principal);
+        border-radius: 6px;
+        padding: 0.75rem 0.85rem;
+    }
+
+    .formula-load-row div {
+        min-width: 0;
+    }
+
+    .formula-load-row strong {
+        color: var(--cinza-800);
+        font-weight: 700;
+    }
+
+    .formula-load-row > strong {
+        color: var(--verde-texto);
+        font-family: 'JetBrains Mono', monospace;
+        white-space: nowrap;
+    }
+
+    .formula-load-row span {
+        display: block;
+        color: var(--cinza-600);
+        font-size: 0.86rem;
+        line-height: 1.45;
+        margin-top: 0.15rem;
     }
 
     .formula-sidebar-brand {

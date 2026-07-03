@@ -64,6 +64,7 @@ OCR_BAND_STRIP_X_PAD_LEFT = 5.0
 OCR_BAND_STRIP_X_PAD_RIGHT = 150.0
 OCR_BAND_STRIP_Y_PAD = 10.0
 OCR_LEVEL_ROW_TOL_Y = 18.0
+LEVEL_COLUMN_PAD_X = 12.0
 
 # Historical defaults for recurring jobs. The user can confirm or override
 # them in the level mapping dialog before the CSV is generated.
@@ -74,6 +75,12 @@ DEFAULT_LANCE_MAP: dict[float, int] = {
     1050.35: 8,
     1050.95: 8,
     1051.00: 8,
+    1055.91: 10,
+    1059.11: 11,
+    1062.31: 12,
+    1065.51: 13,
+    1068.71: 14,
+    1071.91: 15,
 }
 
 RE_NIVEL = re.compile(r"^\+?(\d{3,4}[,.]\d{1,2})$")
@@ -123,16 +130,10 @@ def resolve_output_csv(pdf_path: Path) -> Path:
     if not os.environ.get("ARMPIL_RESULT_FILE", "").strip():
         return pdf_path.with_name(f"{pdf_path.stem}_script.csv")
 
-    configured_dir = os.environ.get("ARMPIL_OUTPUT_DIR", "").strip()
-    if configured_dir:
-        output_dir = Path(configured_dir)
-    else:
-        public_dir = os.environ.get("PUBLIC", "").strip()
-        if public_dir:
-            output_dir = Path(public_dir) / "Documents" / "Scripts Formula" / "ARMPIL"
-        else:
-            output_dir = Path(tempfile.gettempdir()) / "ScriptsFormula" / "ARMPIL"
-
+    # Bridge run (VBA): the CSV is only an intermediate hand-off to fill the
+    # ARMPIL table in Excel, so it goes to a temp folder and the caller
+    # deletes it once the table has been populated.
+    output_dir = Path(tempfile.gettempdir()) / "ScriptsFormula" / "ARMPIL"
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir / f"{ascii_slug(pdf_path.stem)}_script.csv"
 
@@ -164,7 +165,7 @@ def choose_paths(discover: bool) -> tuple[Path, Path | None]:
 
 def calc_as(qty: int, diam_mm: float) -> float:
     d_cm = diam_mm / 10.0
-    return round(qty * math.pi * (d_cm / 2) ** 2, 2)
+    return qty * math.pi * (d_cm / 2) ** 2
 
 
 def fmt_num(val: float) -> str:
@@ -556,6 +557,86 @@ def find_boxes(spans: list[dict]) -> list[dict]:
     return boxes
 
 
+def median_value(values: list[float]) -> float | None:
+    if not values:
+        return None
+
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def keep_dominant_level_x_cluster(
+    levels: list[dict],
+    box_cx: float,
+    box_cy: float,
+    preferred_keys: set[tuple[float, float, float]] | None = None,
+    tol_x: float = 45.0,
+) -> list[dict]:
+    if len(levels) <= 1:
+        return levels
+
+    clusters: list[list[dict]] = []
+    for level in sorted(levels, key=lambda item: item["x"]):
+        for cluster in clusters:
+            center_x = sum(item["x"] for item in cluster) / len(cluster)
+            if abs(level["x"] - center_x) <= tol_x:
+                cluster.append(level)
+                break
+        else:
+            clusters.append([level])
+
+    def cluster_score(cluster: list[dict]) -> tuple[int, int, float]:
+        preferred_count = 0
+        if preferred_keys:
+            preferred_count = sum(
+                1
+                for level in cluster
+                if (round(level["val"], 2), round(level["x"], 2), round(level["y"], 2)) in preferred_keys
+            )
+        center_x = sum(item["x"] for item in cluster) / len(cluster)
+        top_y = min(item["y"] for item in cluster)
+        return (preferred_count, -abs(top_y - box_cy), len(cluster), -abs(center_x - box_cx))
+
+    best = max(clusters, key=cluster_score)
+    return sorted(best, key=lambda item: item["y"])
+
+
+def keep_contiguous_level_sequence(levels: list[dict]) -> list[dict]:
+    ordered = sorted(levels, key=lambda item: item["y"])
+    if len(ordered) <= 1:
+        return ordered
+
+    gaps = [
+        current["y"] - previous["y"]
+        for previous, current in zip(ordered, ordered[1:])
+        if current["y"] > previous["y"]
+    ]
+    typical_gap = median_value(gaps)
+    if typical_gap is None:
+        return ordered
+
+    # Level rows usually form a regular vertical cadence. Preserve the
+    # contiguous run and stop when the next candidate is far below it.
+    max_gap = max(LOWEST_LEVEL_EXTRA_Y + 80.0, typical_gap * 2.2)
+    contiguous = [ordered[0]]
+    direction: int | None = None
+    for previous, current in zip(ordered, ordered[1:]):
+        if current["y"] - previous["y"] > max_gap:
+            break
+        delta_value = current["val"] - previous["val"]
+        if abs(delta_value) > SAME_LANCE_LEVEL_TOL:
+            current_direction = -1 if delta_value < 0 else 1
+            if direction is None:
+                direction = current_direction
+            elif current_direction != direction:
+                break
+        contiguous.append(current)
+    return contiguous
+
+
 def assign_levels(spans: list[dict], boxes: list[dict]) -> None:
     level_spans = []
     for span in spans:
@@ -571,19 +652,24 @@ def assign_levels(spans: list[dict], boxes: list[dict]) -> None:
     for box in boxes:
         y_lo = box["cy"] - 50
         base_y_hi = box["cy"] + 650
-        base_nearby = [
+        column_candidates = [
             level
             for level in level_spans
-            if box["x_left"] <= level["x"] <= box["x_right"] and y_lo <= level["y"] <= base_y_hi
+            if box["x_left"] - LEVEL_COLUMN_PAD_X <= level["x"] <= box["x_right"] + LEVEL_COLUMN_PAD_X
+            and y_lo <= level["y"]
+        ]
+        base_nearby = [
+            level for level in column_candidates if level["y"] <= base_y_hi
         ]
 
         nearby = base_nearby
         if base_nearby:
-            y_hi = max(base_y_hi, max(level["y"] for level in base_nearby) + LOWEST_LEVEL_EXTRA_Y + 80.0)
             base_keys = {
                 (round(level["val"], 2), round(level["x"], 2), round(level["y"], 2))
                 for level in base_nearby
             }
+            dominant_cluster = keep_dominant_level_x_cluster(column_candidates, box["cx"], box["cy"], base_keys)
+            contiguous_candidates = keep_contiguous_level_sequence(dominant_cluster)
             nearby = [
                 {
                     "val": level["val"],
@@ -594,8 +680,7 @@ def assign_levels(spans: list[dict], boxes: list[dict]) -> None:
                     in base_keys
                     else 1,
                 }
-                for level in level_spans
-                if box["x_left"] <= level["x"] <= box["x_right"] and y_lo <= level["y"] <= y_hi
+                for level in contiguous_candidates
             ]
 
         seen: dict[float, dict] = {}
@@ -613,6 +698,70 @@ def assign_levels(spans: list[dict], boxes: list[dict]) -> None:
                 seen[key] = {"val": level["val"], "x": level["x"], "y": level["y"]}
 
         box["levels"] = sorted(seen.values(), key=lambda item: item["y"], reverse=True)
+
+
+def fill_missing_consensus_levels(boxes: list[dict]) -> None:
+    if len(boxes) < 2:
+        return
+
+    level_samples: dict[float, list[dict]] = defaultdict(list)
+    for box in boxes:
+        for level in box.get("levels", []):
+            if isinstance(level["val"], str):
+                continue
+            level_samples[round(level["val"], 2)].append(level)
+
+    consensus_threshold = max(2, len(boxes) - 1)
+    consensus_levels: list[dict] = []
+    for key, samples in level_samples.items():
+        if len(samples) < consensus_threshold:
+            continue
+        y_values = [sample["y"] for sample in samples]
+        x_values = [sample["x"] for sample in samples]
+        consensus_levels.append(
+            {
+                "key": key,
+                "val": median_value([sample["val"] for sample in samples]) or samples[0]["val"],
+                "x": median_value(x_values) or samples[0]["x"],
+                "y": median_value(y_values) or samples[0]["y"],
+            }
+        )
+
+    if not consensus_levels:
+        return
+
+    for box in boxes:
+        levels = box.get("levels", [])
+        if len(levels) < 2:
+            continue
+
+        present_keys = {round(level["val"], 2) for level in levels if not isinstance(level["val"], str)}
+        ordered = sorted(levels, key=lambda item: item["y"])
+        gaps = [
+            current["y"] - previous["y"]
+            for previous, current in zip(ordered, ordered[1:])
+            if current["y"] > previous["y"]
+        ]
+        typical_gap = median_value(gaps)
+        if typical_gap is None:
+            continue
+
+        top_y = ordered[0]["y"]
+        bottom_y = ordered[-1]["y"]
+        reference_x = median_value([level["x"] for level in levels]) or box["cx"]
+        additions: list[dict] = []
+
+        for consensus in consensus_levels:
+            if consensus["key"] in present_keys:
+                continue
+
+            if consensus["y"] < top_y and top_y - consensus["y"] <= typical_gap * 1.35:
+                additions.append({"val": consensus["val"], "x": reference_x, "y": consensus["y"]})
+            elif consensus["y"] > bottom_y and consensus["y"] - bottom_y <= typical_gap * 1.35:
+                additions.append({"val": consensus["val"], "x": reference_x, "y": consensus["y"]})
+
+        if additions:
+            box["levels"] = sorted(levels + additions, key=lambda item: item["y"], reverse=True)
 
 
 def box_level_row_y(box: dict) -> float:
@@ -652,8 +801,8 @@ def refine_box_bounds_by_level_rows(boxes: list[dict], tol: float = 55) -> None:
             else:
                 right = (box["cx"] + row[index + 1]["cx"]) / 2
 
-            box["x_left"] = left
-            box["x_right"] = right
+            box["x_left"] = max(box["x_left"], left)
+            box["x_right"] = min(box["x_right"], right)
             box.pop("_rebar_segments", None)
 
 
@@ -768,6 +917,47 @@ def read_known_lances_from_env() -> list[int]:
     return sorted(dict.fromkeys(values))
 
 
+def read_known_pilar_lances_from_env() -> dict[str, list[int]]:
+    raw = os.environ.get("ARMPIL_KNOWN_PILAR_LANCES", "").strip()
+    if not raw:
+        return {}
+
+    mapping: dict[str, list[int]] = {}
+    for chunk in re.split(r"[;\n]+", raw):
+        chunk = chunk.strip()
+        if not chunk or "=" not in chunk:
+            continue
+        name_text, lances_text = chunk.split("=", 1)
+        name = name_text.strip().upper()
+        if not name:
+            continue
+        values: list[int] = []
+        for token in re.split(r"[,\s]+", lances_text.strip()):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                values.append(int(token))
+            except ValueError:
+                continue
+        if values:
+            mapping[name] = sorted(dict.fromkeys(values))
+
+    return mapping
+
+
+def collect_known_lances_for_boxes(boxes: list[dict]) -> list[int]:
+    mapping = read_known_pilar_lances_from_env()
+    if not mapping:
+        return []
+
+    values: list[int] = []
+    for box in boxes:
+        for name in box.get("names", []):
+            values.extend(mapping.get(name.strip().upper(), []))
+    return sorted(dict.fromkeys(values))
+
+
 def align_known_lances_to_levels(known_lances: list[int], level_count: int) -> list[int]:
     if level_count <= 0 or not known_lances:
         return []
@@ -793,7 +983,7 @@ def get_default_lance_for_level(level: float | str) -> int | None:
     return DEFAULT_LANCE_MAP.get(numeric_level)
 
 
-def build_default_lance_map(levels: list[float | str]) -> dict[str, int]:
+def build_default_lance_map(levels: list[float | str], known_lances: list[int] | None = None) -> dict[str, int]:
     env_map = parse_env_lance_map()
     if env_map:
         return {
@@ -802,8 +992,17 @@ def build_default_lance_map(levels: list[float | str]) -> dict[str, int]:
             if normalize_level_key(level) in env_map
         }
 
+    default_mapping: dict[str, int] = {}
+    for level in levels:
+        lance = get_default_lance_for_level(level)
+        if lance is not None:
+            default_mapping[normalize_level_key(level)] = lance
+    if has_complete_lance_map(levels, default_mapping):
+        return default_mapping
+
     ordered_levels = sort_level_values(levels)
-    known_lances = read_known_lances_from_env()
+    if known_lances is None:
+        known_lances = read_known_lances_from_env()
     aligned_lances = align_known_lances_to_levels(known_lances, len(ordered_levels))
     if aligned_lances:
         mapping = {normalize_level_key(level): lance for level, lance in zip(ordered_levels, aligned_lances)}
@@ -820,12 +1019,34 @@ def build_default_lance_map(levels: list[float | str]) -> dict[str, int]:
                 mapping[normalize_level_key(level)] = aligned_lances[-1]
             return mapping
 
-    mapping: dict[str, int] = {}
+    return default_mapping
+
+
+def get_first_positive_lance(levels: list[float | str], mapping: dict[str, int]) -> int | None:
     for level in levels:
-        lance = get_default_lance_for_level(level)
-        if lance is not None:
-            mapping[normalize_level_key(level)] = lance
-    return mapping
+        lance = mapping.get(normalize_level_key(level))
+        if isinstance(lance, int) and lance > 0:
+            return lance
+    return None
+
+
+def shift_lance_map_start(levels: list[float | str], mapping: dict[str, int], desired_start: int) -> dict[str, int]:
+    current_start = get_first_positive_lance(levels, mapping)
+    if current_start is None:
+        raise ValueError("Nenhum lance positivo disponivel para ajustar.")
+
+    offset = desired_start - current_start
+    shifted: dict[str, int] = {}
+    for level in levels:
+        level_key = normalize_level_key(level)
+        if level_key not in mapping:
+            continue
+        lance = mapping[level_key]
+        if lance > 0:
+            shifted[level_key] = lance + offset
+        else:
+            shifted[level_key] = lance
+    return shifted
 
 
 def has_complete_lance_map(levels: list[float | str], mapping: dict[str, int]) -> bool:
@@ -862,9 +1083,15 @@ def request_lance_map(levels: list[float | str]) -> dict[str, int]:
         text="O mesmo numero de lance pode ser repetido em mais de um nivel.",
     ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 10))
 
+    suggested_start = get_first_positive_lance(levels, suggestions)
+    start_var = tk.StringVar(value="" if suggested_start is None else str(suggested_start))
+    ttk.Label(container, text="Primeiro lance", width=12).grid(row=3, column=0, sticky="w", padx=(0, 8))
+    ttk.Label(container, text="Desloca toda a sequencia sugerida", width=24).grid(row=3, column=1, sticky="w", padx=(0, 8))
+    ttk.Entry(container, width=10, textvariable=start_var).grid(row=3, column=2, sticky="w")
+
     entry_vars: dict[float, tk.StringVar] = {}
     for offset, level in enumerate(levels):
-        row_index = offset + 3
+        row_index = offset + 4
         prev_level = levels[offset - 1] if offset > 0 else None
         if prev_level is None:
             context = "Trecho logo abaixo"
@@ -879,7 +1106,56 @@ def request_lance_map(levels: list[float | str]) -> dict[str, int]:
         ttk.Entry(container, width=10, textvariable=var).grid(row=row_index, column=2, sticky="w")
         entry_vars[level] = var
 
-    button_row = len(levels) + 3
+    def apply_start_lance() -> None:
+        text = start_var.get().strip()
+        if not text:
+            return
+        try:
+            desired_start = int(text)
+        except ValueError:
+            messagebox.showerror("Valor invalido", "Informe um numero inteiro para o primeiro lance.", parent=dialog)
+            return
+        if desired_start <= 0:
+            messagebox.showerror("Valor invalido", "O primeiro lance deve ser maior que zero.", parent=dialog)
+            return
+
+        current_values: dict[str, int] = {}
+        for level, var in entry_vars.items():
+            value = var.get().strip()
+            if not value:
+                continue
+            try:
+                current_values[normalize_level_key(level)] = int(value)
+            except ValueError:
+                messagebox.showerror(
+                    "Valor invalido",
+                    f"Lance invalido para o nivel {format_level(level)}.",
+                    parent=dialog,
+                )
+                return
+
+        try:
+            shifted = shift_lance_map_start(levels, current_values, desired_start)
+        except ValueError as exc:
+            messagebox.showerror("Ajuste indisponivel", str(exc), parent=dialog)
+            return
+
+        if any(lance < 0 for lance in shifted.values()):
+            messagebox.showerror(
+                "Valor invalido",
+                "O ajuste informado gerou lances negativos.",
+                parent=dialog,
+            )
+            return
+
+        for level in levels:
+            level_key = normalize_level_key(level)
+            if level_key in shifted:
+                entry_vars[level].set(str(shifted[level_key]))
+
+    ttk.Button(container, text="Aplicar", command=apply_start_lance).grid(row=3, column=3, sticky="w")
+
+    button_row = len(levels) + 4
 
     def submit() -> None:
         pending: dict[str, int] = {}
@@ -1369,10 +1645,16 @@ def extract_long_bars(
                 )
                 token_candidates.sort(key=lambda span: (span["x0"], span["cy"]))
 
-            has_spacing_token = any(RE_C_SLASH.match(span["t"]) for span in token_candidates)
+            has_pitch_token = any(RE_C_SLASH.match(span["t"]) for span in token_candidates)
+            has_length_token = any(RE_OCR_C_LENGTH.search(span["t"]) for span in token_candidates)
             qty: int | None = None
             diam: float | None = None
             for candidate in token_candidates:
+                matches = extract_long_matches_from_text(candidate["t"])
+                if matches:
+                    qty, diam = matches[0]
+                    break
+
                 if qty is None and RE_QTY.match(candidate["t"]):
                     qty = int(candidate["t"])
                 elif qty is not None:
@@ -1382,7 +1664,17 @@ def extract_long_bars(
                         break
 
             if qty is not None and diam is not None and diam >= BITOLA_MIN_LONG:
-                if has_spacing_token and qty > 12:
+                source_token = ordered[index]["t"]
+                if has_pitch_token and RE_PX.match(source_token):
+                    box.setdefault("_pitch_source_tokens", set()).add(source_token)
+
+                if has_pitch_token and qty > 12:
+                    index = next_index if next_index > index else index + 1
+                    continue
+                if has_length_token and qty > 12 and not has_pitch_token:
+                    index = next_index if next_index > index else index + 1
+                    continue
+                if has_length_token and qty > 12 and diam <= BITOLA_MIN_LONG:
                     index = next_index if next_index > index else index + 1
                     continue
                 level = find_level_above_bar(ordered[index]["cy"], box["levels"])
@@ -1418,11 +1710,17 @@ def extract_long_bars(
     return results
 
 
-def filter_bar_entries(entries: list[tuple[int, int, float, str, bool]]) -> list[tuple[int, int, float, str, bool]]:
-    grouped: dict[tuple[int, float], list[tuple[int, int, float, str, bool]]] = defaultdict(list)
+def filter_bar_entries(
+    entries: list[tuple[int, int, float, str, bool]],
+    excluded_source_tokens: set[str] | None = None,
+) -> list[tuple[int, int, float, str, bool]]:
+    grouped: dict[tuple[int, float, str], list[tuple[int, int, float, str, bool]]] = defaultdict(list)
     for entry in entries:
-        lance, _qty, diam, _source, _confirmed = entry
-        grouped[(lance, diam)].append(entry)
+        lance, qty, diam, source, confirmed = entry
+        source_token = source.split("@", 1)[0]
+        if excluded_source_tokens and source_token in excluded_source_tokens and qty > 12 and not confirmed:
+            continue
+        grouped[(lance, diam, source_token)].append(entry)
 
     filtered: list[tuple[int, int, float, str, bool]] = []
     for group in grouped.values():
@@ -1481,6 +1779,9 @@ def main() -> None:
             spans.extend(ocr_spans)
             boxes = find_boxes(spans)
     assign_levels(spans, boxes)
+    refine_box_bounds_by_level_rows(boxes)
+    assign_levels(spans, boxes)
+    fill_missing_consensus_levels(boxes)
     if not collect_unique_levels(boxes):
         attach_named_level_entries(page, boxes)
     attach_level_division_lines(boxes, horizontal_lines)
@@ -1517,7 +1818,11 @@ def main() -> None:
         emit_result_line(f"ALL_LEVELS={formatted_all_levels}")
         return
 
-    default_map = build_default_lance_map(assignable_levels)
+    known_lances = collect_known_lances_for_boxes(boxes)
+    if not known_lances:
+        known_lances = read_known_lances_from_env()
+
+    default_map = build_default_lance_map(assignable_levels, known_lances=known_lances)
 
     if discover:
         print("\n=== NIVEIS UNICOS ===")
@@ -1555,7 +1860,7 @@ def main() -> None:
     raw_rows: dict[tuple[str, int], list[tuple[int, float, str]]] = defaultdict(list)
     for box in boxes:
         data = extract_long_bars(spans, box, lance_map, vertical_lines)
-        data = filter_bar_entries(data)
+        data = filter_bar_entries(data, box.get("_pitch_source_tokens"))
         data = keep_top_cluster_if_single_lance(data)
         for lance, qty, diam, source, _confirmed in data:
             for name in box["names"]:
@@ -1571,14 +1876,14 @@ def main() -> None:
 
         for diam in sorted(by_diam):
             qty = by_diam[diam]
-            all_rows.append((pilar, lance, qty, fmt_num(diam), f"{calc_as(qty, diam):.2f}"))
+            all_rows.append((pilar, lance, qty, fmt_num(diam), f"{calc_as(qty, diam):.10g}"))
 
     if out_csv is None:
         sys.exit("[ERRO] Caminho de saida do CSV nao definido.")
 
     with open(out_csv, "w", newline="", encoding="utf-8-sig") as csv_file:
         writer = csv.writer(csv_file, delimiter=";")
-        writer.writerow(["Pilar", "Lance", "Qtd(Qf)", "Bitola(mm)", "As Total (cm2)"])
+        writer.writerow(["Pilar", "Lance", "Qtd (Qf)", "Bitola (mm)", "As Total (cm2)"])
         writer.writerows(all_rows)
 
     print(f"[OK] {len(all_rows)} registros -> {out_csv}")

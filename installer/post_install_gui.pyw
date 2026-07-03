@@ -33,7 +33,7 @@ UPDATE_STATE_PATH = os.path.join(APP_ROOT, ".update_state.json")
 STEPS = [
     ("Atualizando pip...",                  ["-m", "pip", "install", "--upgrade", "pip"]),
     ("Instalando dependências principais...", ["-m", "pip", "install", "--upgrade",
-                                              "xlsxwriter", "pillow", "streamlit==1.56.0", "fpdf2", "matplotlib", "rapidocr_onnxruntime"]),
+                                              "xlsxwriter", "pillow", "streamlit==1.56.0", "fpdf2", "rapidocr_onnxruntime"]),
     ("Instalando PyMuPDF...",               ["-m", "pip", "install", "--only-binary=:all:", "PyMuPDF"]),
     ("Copiando arquivos para o TQS...",     [os.path.join(APP_ROOT, "src", "install_tqs_files.py")]),
 ]

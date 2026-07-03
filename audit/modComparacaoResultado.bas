@@ -41,6 +41,8 @@ Public Function CompareAndMark(Optional ByVal showSuccessMessage As Boolean = Tr
 
     Dim dict As Object
     Set dict = CreateObject("Scripting.Dictionary")
+    Dim levelDict As Object
+    Set levelDict = BuildArmpilLevelDisplayDict()
 
     If lastArm >= 6 Then
         AddKeysFromData dict, wsArm.Range("B6:C" & lastArm).Value2
@@ -58,15 +60,21 @@ Public Function CompareAndMark(Optional ByVal showSuccessMessage As Boolean = Tr
     resCount = dict.count
 
     Dim dataOut() As Variant
-    ReDim dataOut(1 To resCount, 1 To 2)
+    Dim lanceOut() As Variant
+    ReDim dataOut(1 To resCount, 1 To 3)
+    ReDim lanceOut(1 To resCount, 1 To 1)
 
     Dim i As Long
     Dim k As Variant
+    Dim rawLance As Variant
     i = 0
     For Each k In dict.keys
         i = i + 1
+        rawLance = dict(k)(1)
         dataOut(i, 1) = dict(k)(0)
-        dataOut(i, 2) = dict(k)(1)
+        dataOut(i, 2) = GetDisplayLevelForLance(rawLance, levelDict)
+        dataOut(i, 3) = BuildPilarKey(CStr(dict(k)(0)), rawLance)
+        lanceOut(i, 1) = rawLance
     Next k
 
     Dim firstResRow As Long
@@ -75,8 +83,9 @@ Public Function CompareAndMark(Optional ByVal showSuccessMessage As Boolean = Tr
     lastResRow = firstResRow + resCount - 1
 
     With wsRes
-        .Range(.Cells(firstResRow, 2), .Cells(lastResRow, 3)).Value2 = dataOut
-        .Range(.Cells(firstResRow, 4), .Cells(lastResRow, 4)).FormulaR1C1 = "=UPPER(TRIM(RC[-2]))&""|""&RC[-1]"
+        .Range(.Cells(firstResRow, 2), .Cells(lastResRow, 4)).Value2 = dataOut
+        .Range(.Cells(firstResRow, 11), .Cells(lastResRow, 11)).Value2 = lanceOut
+        .Columns(11).Hidden = True
 
         If lastArm >= 6 Then
             .Range(.Cells(firstResRow, 5), .Cells(lastResRow, 5)).FormulaR1C1 = _
@@ -96,11 +105,11 @@ Public Function CompareAndMark(Optional ByVal showSuccessMessage As Boolean = Tr
             "=IF(OR(RC[-2]="""",RC[-1]=""""),"""",IF(AND(ISNUMBER(RC[-2]),ISNUMBER(RC[-1])),RC[-2]-RC[-1],""""))"
         .Range(.Cells(firstResRow, 10), .Cells(lastResRow, 10)).FormulaR1C1 = _
             "=IF(OR(RC[-3]="""",RC[-2]=""""),""SEM MATCH"",IF(NOT(ISNUMBER(RC[-2])),""NAO DIMENSIONADO"",IF(RC[-3]>=RC[-2],""APROVADO"",IF(RC[-3]*1.15>=RC[-2],""MARGEM 15%"",""REPROVADO""))))"
-        .Range(.Cells(firstResRow, 4), .Cells(lastResRow, 10)).Calculate
+        .Range(.Cells(firstResRow, 4), .Cells(lastResRow, 11)).Calculate
     End With
 
-    SortSheetRangeByPilarLance wsRes, firstResRow, lastResRow, 2, 10, 2, 3, 11
-    wsRes.Range(wsRes.Cells(firstResRow, 4), wsRes.Cells(lastResRow, 10)).Calculate
+    SortSheetRangeByPilarLance wsRes, firstResRow, lastResRow, 2, 11, 2, 11, 12
+    wsRes.Range(wsRes.Cells(firstResRow, 4), wsRes.Cells(lastResRow, 11)).Calculate
 
     FormatResultadoRange wsRes, firstResRow, lastResRow
     AtualizarResumoResultado wsRes, lastResRow
@@ -147,7 +156,8 @@ Public Sub ClearResultsPermanent(ByVal ws As Worksheet)
     FormatResultadoHeaderRow ws
 
     If lr >= 9 Then
-        ws.Range(ws.Cells(9, 2), ws.Cells(lr, 13)).ClearContents
+        ws.Range(ws.Cells(9, 2), ws.Cells(lr, 14)).ClearContents
+        ws.Columns(11).Hidden = True
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Interior.Color = RGB(247, 248, 252)
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Font.Color = RGB(44, 62, 80)
         ws.Range(ws.Cells(9, 2), ws.Cells(lr, 10)).Borders.LineStyle = xlNone
@@ -189,7 +199,8 @@ Public Sub PrepararCabecalhoResultado(ByVal ws As Worksheet)
         .VerticalAlignment = xlCenter
     End With
 
-    ws.Range("B5:G5").Value = Array("PILARES", "LANCES", "APROVADOS", "MARGEM 15%", "REPROVADOS", "SEM MATCH")
+    ws.Range("B5:G5").Value = Array("PILARES", "NIVEIS", "APROVADOS", "MARGEM 15%", "REPROVADOS", "SEM MATCH")
+    ws.Range("B8:J8").Value = Array("PILAR", "NIVEL", "CHAVE", "QTD ARMPIL", "BITOLA ARMPIL", "AS ARMPIL", "AS SELE", "DIF", "STATUS")
 
     With ws.Range("B5:G5")
         .Interior.Color = RGB(234, 243, 222)

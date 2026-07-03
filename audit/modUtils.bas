@@ -284,6 +284,10 @@ Public Function GetLastUsedRowInColumns(ByVal ws As Worksheet, ByVal colStart As
     Next col
 End Function
 
+Public Function WorksheetHasDataRows(ByVal ws As Worksheet, ByVal rowStart As Long, ByVal colStart As Long, ByVal colEnd As Long) As Boolean
+    WorksheetHasDataRows = (GetLastUsedRowInColumns(ws, colStart, colEnd) >= rowStart)
+End Function
+
 Public Function GetPilarSortNumber(ByVal pilar As String) As Double
     Dim txt As String
     Dim pos As Long

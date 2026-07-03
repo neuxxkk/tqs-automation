@@ -51,6 +51,7 @@ def _build_sidebar_inputs() -> EntradaBeiral:
 
     st.sidebar.subheader("Projeto")
     nome_projeto = st.sidebar.text_input("Nome do projeto / laje", value=DEFAULT_PROJECT_NAME)
+    pavimento = st.sidebar.text_input("Pavimento", value="")
 
     st.sidebar.subheader("Geometria")
     espessura_cm = st.sidebar.number_input(
@@ -155,6 +156,7 @@ def _build_sidebar_inputs() -> EntradaBeiral:
         carga_permanente_tf_m2=carga_permanente,
         carga_acidental_tf_m2=carga_acidental,
         possui_nervura_borda=possui_nervura_borda,
+        pavimento=pavimento,
         espessura_nervura_cm=espessura_nervura_cm,
         altura_nervura_cm=altura_nervura_cm,
         possui_guarda_corpo=possui_guarda_corpo,

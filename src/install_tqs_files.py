@@ -12,7 +12,6 @@ PIP_DEPENDENCIES = [
     "pillow",
     "streamlit==1.56.0",
     "fpdf2",
-    "matplotlib",
     "rapidocr_onnxruntime",
 ]
 

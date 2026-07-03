@@ -21,6 +21,12 @@ try:
 except ImportError:
     winreg = None
 
+try:
+    from PIL import Image, ImageTk
+except ImportError:  # Pillow ausente: usamos o logotipo textual como fallback
+    Image = None
+    ImageTk = None
+
 
 BASE_DIR = Path(__file__).resolve().parent
 ACTIVITIES_URL = os.getenv("SISTEMA_ATIVIDADES_URL", "")
@@ -31,11 +37,13 @@ APP_ICON_RELATIVE_PATH = Path("assets") / "imgs" / "engenharia_formula_logo.ico"
 
 # Paleta Formula Engenharia
 _C900 = "#1e1e1c"   # sidebar / header escuro
-_C800 = "#2c2c2a"   # texto primário
+_C850 = "#252523"   # hover sutil na sidebar
+_C800 = "#2c2c2a"   # texto primário / divisórias
 _C600 = "#6b6b6b"   # texto secundário
 _C300 = "#b4b2a9"   # bordas
 _C100 = "#f1efe8"   # fundo geral
 _C50  = "#f8f7f4"   # fundo de cards
+_CARD_H = "#eef0e8" # hover dos cards
 _VERDE = "#5a8a4a"  # cor principal da marca
 _VERDE_H = "#3b6d11" # hover
 _BRANCO = "#ffffff"
@@ -342,6 +350,8 @@ class ScriptLauncherApp(tk.Tk):
         self.geometry("820x760")
         self.minsize(660, 620)
         self.configure(bg=_C100)
+
+        self._image_refs: list = []  # mantém referências para o Tk não coletar as imagens
         self._set_window_icon()
 
         self._running_processes: list[subprocess.Popen] = []
@@ -356,10 +366,60 @@ class ScriptLauncherApp(tk.Tk):
         icon_path = _resolve_app_icon()
         if not icon_path:
             return
+        # .ico para o título/janela nativa do Windows
         try:
-            self.iconbitmap(str(icon_path))
+            self.iconbitmap(default=str(icon_path))
         except tk.TclError:
-            pass
+            try:
+                self.iconbitmap(str(icon_path))
+            except tk.TclError:
+                pass
+        # iconphoto garante o ícone também na barra de tarefas / outros ambientes
+        photo = self._load_logo_photo(64)
+        if photo is not None:
+            try:
+                self.iconphoto(True, photo)
+            except tk.TclError:
+                pass
+
+    def _load_logo_photo(self, target_width: int):
+        """Carrega o logotipo (.ico) redimensionado como PhotoImage do Tk.
+
+        Retorna None se o Pillow não estiver disponível ou o arquivo não for encontrado,
+        permitindo o fallback textual da marca.
+        """
+        if Image is None or ImageTk is None:
+            return None
+        icon_path = _resolve_app_icon()
+        if not icon_path:
+            return None
+        try:
+            img = Image.open(icon_path).convert("RGBA")
+        except Exception:
+            return None
+
+        width, height = img.size
+        if width and width != target_width:
+            ratio = target_width / width
+            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", 1)
+            img = img.resize((target_width, max(1, round(height * ratio))), resample)
+
+        try:
+            photo = ImageTk.PhotoImage(img)
+        except Exception:
+            return None
+        self._image_refs.append(photo)
+        return photo
+
+    def _read_app_version(self) -> str:
+        for root in _candidate_app_roots():
+            candidate = root / "version.txt"
+            if candidate.exists():
+                try:
+                    return candidate.read_text(encoding="utf-8").strip()
+                except OSError:
+                    return ""
+        return ""
 
     def _configure_styles(self) -> None:
         style = ttk.Style(self)
@@ -409,10 +469,14 @@ class ScriptLauncherApp(tk.Tk):
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
 
-        logo_frame = tk.Frame(sidebar, bg=_C900, pady=28, padx=16)
+        logo_frame = tk.Frame(sidebar, bg=_C900, pady=26, padx=16)
         logo_frame.pack(fill="x")
-        tk.Label(logo_frame, text="FÓRMULA", font=("Segoe UI Semibold", 16), bg=_C900, fg=_BRANCO).pack(anchor="w")
-        tk.Label(logo_frame, text="Engenharia e Consultoria", font=("Segoe UI", 8), bg=_C900, fg=_C300).pack(anchor="w")
+        logo_photo = self._load_logo_photo(150)
+        if logo_photo is not None:
+            tk.Label(logo_frame, image=logo_photo, bg=_C900, borderwidth=0).pack(anchor="center")
+        else:
+            tk.Label(logo_frame, text="FÓRMULA", font=("Segoe UI Semibold", 16), bg=_C900, fg=_BRANCO).pack(anchor="w")
+            tk.Label(logo_frame, text="Engenharia e Consultoria", font=("Segoe UI", 8), bg=_C900, fg=_C300).pack(anchor="w")
 
         tk.Frame(sidebar, bg=_C800, height=1).pack(fill="x", padx=16, pady=(0, 20))
 
@@ -429,27 +493,19 @@ class ScriptLauncherApp(tk.Tk):
             ("Auditoria ARMPIL", "auditoria", self._open_auditoria_armpil),
         ]
         for label_text, key, action in nav_defs:
-            lbl = tk.Label(
-                sidebar, text=f"  {label_text}",
-                font=("Segoe UI", 10), bg=_C900, fg=_C300,
-                anchor="w", cursor="hand2", pady=7,
-            )
-            lbl.pack(fill="x", padx=8)
-            lbl.bind("<Enter>", lambda e, w=lbl: w.configure(fg=_BRANCO, bg="#2c2c2a"))
-            lbl.bind("<Leave>", lambda e, w=lbl: w.configure(fg=_C300, bg=_C900))
-            lbl.bind("<Button-1>", lambda e, k=key, a=action: (self._scroll_to(k), a()))
+            self._build_nav_item(sidebar, label_text, key, action)
 
         tk.Frame(sidebar, bg=_C900).pack(fill="y", expand=True)
 
         tk.Frame(sidebar, bg=_C800, height=1).pack(fill="x", padx=16, pady=(0, 4))
 
         upd_btn = tk.Label(
-            sidebar, text="  Atualizar sistema",
+            sidebar, text="  ↻  Atualizar sistema",
             font=("Segoe UI", 10), bg=_C900, fg=_C300,
             anchor="w", cursor="hand2", pady=7,
         )
         upd_btn.pack(fill="x", padx=8)
-        upd_btn.bind("<Enter>", lambda e: upd_btn.configure(fg=_BRANCO, bg=_C800))
+        upd_btn.bind("<Enter>", lambda e: upd_btn.configure(fg=_BRANCO, bg=_C850))
         upd_btn.bind("<Leave>", lambda e: upd_btn.configure(fg=_C300, bg=_C900))
         upd_btn.bind("<Button-1>", lambda _e: self._run_updater())
         self._update_button = upd_btn
@@ -472,14 +528,22 @@ class ScriptLauncherApp(tk.Tk):
         self._update_notice.bind("<Button-1>", lambda _e: self._run_updater(auto_start_download=True))
 
         link_btn = tk.Label(
-            sidebar, text="",
+            sidebar, text="Sistema de Atividades  ↗",
             font=("Segoe UI", 9, "underline"), bg=_C900, fg=_C600,
-            cursor="hand2", pady=10, padx=16,
+            anchor="w", cursor="hand2", pady=10, padx=16,
         )
         link_btn.pack(fill="x")
         link_btn.bind("<Button-1>", lambda _e: self._open_activities())
         link_btn.bind("<Enter>", lambda e: link_btn.configure(fg=_VERDE))
         link_btn.bind("<Leave>", lambda e: link_btn.configure(fg=_C600))
+
+        version = self._read_app_version()
+        if version:
+            tk.Label(
+                sidebar, text=f"versão {version}",
+                font=("Segoe UI", 8), bg=_C900, fg=_C600,
+                anchor="w", padx=16, pady=(0),
+            ).pack(fill="x", pady=(0, 12))
 
         # ── Área principal com scroll ───────────────────────────────────────
         main = tk.Frame(self, bg=_C100)
@@ -512,6 +576,35 @@ class ScriptLauncherApp(tk.Tk):
         self._scroll_inner.bind("<MouseWheel>", self._on_mousewheel)
 
         self._build_scrollable_content(self._scroll_inner)
+
+    def _build_nav_item(self, sidebar: tk.Frame, label_text: str, key: str, action) -> None:
+        row = tk.Frame(sidebar, bg=_C900)
+        row.pack(fill="x", padx=8, pady=1)
+
+        accent = tk.Frame(row, bg=_C900, width=3)
+        accent.pack(side="left", fill="y")
+
+        lbl = tk.Label(
+            row, text=label_text,
+            font=("Segoe UI", 10), bg=_C900, fg=_C300,
+            anchor="w", cursor="hand2", pady=7, padx=10,
+        )
+        lbl.pack(side="left", fill="x", expand=True)
+
+        def on_enter(_e=None) -> None:
+            row.configure(bg=_C850)
+            lbl.configure(bg=_C850, fg=_BRANCO)
+            accent.configure(bg=_VERDE)
+
+        def on_leave(_e=None) -> None:
+            row.configure(bg=_C900)
+            lbl.configure(bg=_C900, fg=_C300)
+            accent.configure(bg=_C900)
+
+        for widget in (row, accent, lbl):
+            widget.bind("<Enter>", on_enter)
+            widget.bind("<Leave>", on_leave)
+            widget.bind("<Button-1>", lambda _e: (self._scroll_to(key), action()))
 
     def _on_inner_configure(self, _event=None) -> None:
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
@@ -547,12 +640,12 @@ class ScriptLauncherApp(tk.Tk):
             title="Dimensionar Vigas",
             description="Processa e coleta relatórios RELGER de todos os pavimentos via TQS.",
             action=self._run_detalhes_viga,
-            btn_style="Primary.TButton",
             about_key="Dimensionar Vigas",
             steps=[
                 ("1", "Selecione o diretório raiz do edifício a ser dimensionado"),
                 ("2", "Selecione o diretório de destino para os arquivos .LST gerados"),
             ],
+            extra_buttons=[("Somente copiar LSTs", self._run_copiar_lsts)],
         )
 
         self._build_tool_card(
@@ -560,7 +653,6 @@ class ScriptLauncherApp(tk.Tk):
             title="Grelha Nao Linear",
             description="Executa formas, armaduras lineares e analise nao linear da grelha no TQS.",
             action=self._run_grelha_nao_linear,
-            btn_style="Secondary.TButton",
             about_key="Grelha Nao Linear",
             steps=[
                 ("1", "Selecione a pasta raiz do edificio, se necessario"),
@@ -573,7 +665,6 @@ class ScriptLauncherApp(tk.Tk):
             title="Cálculo de Beiral",
             description="Interface web para cálculo estrutural de beirais em balanço (NBR 6118).",
             action=self._run_calc_beiral,
-            btn_style="Secondary.TButton",
             about_key="Calculo de Beiral",
         )
 
@@ -582,7 +673,6 @@ class ScriptLauncherApp(tk.Tk):
             title="Calculo de Escadas",
             description="Aplicacao web para modelagem de lances, patamares, apoios e memoria de calculo.",
             action=self._run_calculo_escadas,
-            btn_style="Secondary.TButton",
             about_key="Calculo de Escadas",
         )
 
@@ -591,7 +681,6 @@ class ScriptLauncherApp(tk.Tk):
             title="Auditoria ARMPIL",
             description="Planilha de conferência e registro de armação de pilares.",
             action=self._open_auditoria_armpil,
-            btn_style="Secondary.TButton",
             about_key="Auditoria ARMPIL",
         )
 
@@ -602,9 +691,9 @@ class ScriptLauncherApp(tk.Tk):
         title: str,
         description: str,
         action,
-        btn_style: str,
         about_key: str,
         steps: list[tuple[str, str]] | None = None,
+        extra_buttons: list[tuple[str, Callable[[], None]]] | None = None,
     ) -> None:
         card = tk.Frame(parent, bg=_C50, bd=0, pady=16, padx=18)
         card.pack(fill="x", pady=(0, 14))
@@ -613,7 +702,9 @@ class ScriptLauncherApp(tk.Tk):
         # registra âncora para navegação pela sidebar
         self._card_anchors[key] = card
 
-        tk.Frame(card, bg=_VERDE, width=3).pack(side="left", fill="y", padx=(0, 14))
+        accent = tk.Frame(card, bg=_VERDE, width=3)
+        accent.pack(side="left", fill="y", padx=(0, 14))
+        self._add_card_hover(card, accent)
 
         inner = tk.Frame(card, bg=_C50)
         inner.pack(side="left", fill="both", expand=True)
@@ -666,7 +757,36 @@ class ScriptLauncherApp(tk.Tk):
                     anchor="w",
                 ).pack(side="left", padx=(8, 0))
 
-        ttk.Button(inner, text="Executar", style=btn_style, command=action).pack(anchor="w")
+        btn_row = tk.Frame(inner, bg=_C50)
+        btn_row.pack(anchor="w", fill="x")
+        btn_row.bind("<MouseWheel>", self._on_mousewheel)
+
+        ttk.Button(btn_row, text="Executar", style="Primary.TButton", command=action).pack(side="left")
+
+        for btn_text, btn_command in extra_buttons or []:
+            ttk.Button(
+                btn_row, text=btn_text, style="Secondary.TButton", command=btn_command
+            ).pack(side="left", padx=(10, 0))
+
+    def _add_card_hover(self, card: tk.Frame, accent: tk.Frame) -> None:
+        """Realça sutilmente o card (moldura + barra de acento) enquanto o mouse está sobre ele."""
+
+        def on_enter(_e=None) -> None:
+            card.configure(bg=_CARD_H)
+            accent.configure(bg=_VERDE_H)
+
+        def on_leave(_e=None) -> None:
+            widget = self.winfo_containing(*self.winfo_pointerxy())
+            node = widget
+            while node is not None:
+                if node is card:
+                    return  # ainda dentro do card (sobre um filho): mantém o realce
+                node = getattr(node, "master", None)
+            card.configure(bg=_C50)
+            accent.configure(bg=_VERDE)
+
+        card.bind("<Enter>", on_enter, add="+")
+        card.bind("<Leave>", on_leave, add="+")
 
     def _show_about(self, title: str, description: str) -> None:
         AboutDialog(self, title, description)
@@ -945,6 +1065,9 @@ class ScriptLauncherApp(tk.Tk):
 
     def _run_detalhes_viga(self) -> None:
         self._run_python_script("detalhes_viga.py")
+
+    def _run_copiar_lsts(self) -> None:
+        self._run_python_script("detalhes_viga.py", extra_args=["--somente-copiar"])
 
     def _run_grelha_nao_linear(self) -> None:
         self._run_python_script("extrair_dwg_grelha.py")

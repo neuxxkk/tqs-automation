@@ -546,6 +546,11 @@ def processar_todas_vigas():
         _aguardar_fechamento(progresso)
         return
 
+    _selecionar_destino_e_exportar(progresso, files)
+
+
+def _selecionar_destino_e_exportar(progresso: ProgressoVigas, files) -> None:
+    """Pede a pasta de destino e copia/renomeia os LSTs no padrão 'Vigas <Pavimento>.LST'."""
     ok = progresso.aguardar_selecao(
         etapa="Selecione a pasta de destino dos LSTs",
         detalhe=f"{len(files)} arquivo(s) encontrado(s). Clique em Selecionar e escolha onde salvar os LSTs.",
@@ -585,5 +590,43 @@ def processar_todas_vigas():
     _aguardar_fechamento(progresso)
 
 
+def copiar_lsts_somente():
+    """Somente localiza e exporta os LSTs existentes, sem executar nenhum processamento no TQS."""
+    progresso = ProgressoVigas()
+
+    ok = progresso.aguardar_selecao(
+        etapa="Selecione a pasta raíz do edifício",
+        detalhe="Clique em Selecionar e escolha a pasta raíz do edifício onde estão os LSTs a serem copiados.",
+    )
+    if not ok:
+        if _abortar_se_cancelado(progresso):
+            return
+        progresso.erro("Operação cancelada pelo usuário.")
+        _aguardar_fechamento(progresso)
+        return
+
+    root_dir = get_root_directory()
+    if not root_dir:
+        if _abortar_se_cancelado(progresso):
+            return
+        progresso.erro("Operação cancelada pelo usuário.")
+        _aguardar_fechamento(progresso)
+        return
+
+    progresso.set_etapa("Procurando arquivos RELGER.LST...")
+    progresso.set_detalhe(f"Varrendo os pavimentos em:\n{root_dir}")
+
+    files = find_relger_files(root_dir)
+    if not files:
+        progresso.erro("Nenhum RELGER.LST encontrado na pasta selecionada.")
+        _aguardar_fechamento(progresso)
+        return
+
+    _selecionar_destino_e_exportar(progresso, files)
+
+
 if __name__ == "__main__":
-    processar_todas_vigas()
+    if "--somente-copiar" in sys.argv[1:]:
+        copiar_lsts_somente()
+    else:
+        processar_todas_vigas()

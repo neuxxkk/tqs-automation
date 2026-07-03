@@ -20,6 +20,43 @@ Option Explicit
 ' MACROS PUBLICAS
 ' ================================================================
 
+Private Function AreAuditInputsReady() As Boolean
+    Dim wsArm As Worksheet
+    Dim wsSel As Worksheet
+
+    Set wsArm = GetRequiredWorksheet("ARMPIL")
+    Set wsSel = GetRequiredWorksheet("SELE")
+
+    AreAuditInputsReady = _
+        WorksheetHasDataRows(wsArm, FIRST_DATA_ROW, COL_PILAR, COL_CHAVE) And _
+        WorksheetHasDataRows(wsSel, FIRST_DATA_ROW, COL_PILAR, 5)
+End Function
+
+Private Sub NotifyLoadCompletion(ByVal loadedLabel As String, ByVal pendingLabel As String)
+    Dim resultUpdated As Boolean
+
+    If AreAuditInputsReady() Then
+        resultUpdated = CompareAndMark(False)
+
+        If resultUpdated Then
+            MsgBox _
+                loadedLabel & " carregado com sucesso." & vbCrLf & vbCrLf & _
+                "RESULTADO atualizado automaticamente.", _
+                vbInformation
+        Else
+            MsgBox _
+                loadedLabel & " carregado com sucesso." & vbCrLf & vbCrLf & _
+                "Nao foi possivel atualizar o RESULTADO automaticamente.", _
+                vbExclamation
+        End If
+    Else
+        MsgBox _
+            loadedLabel & " carregado com sucesso." & vbCrLf & vbCrLf & _
+            "Agora carregue " & pendingLabel & " para atualizar o RESULTADO.", _
+            vbInformation
+    End If
+End Sub
+
 Public Sub Carregar_ARMPIL_CSV()
     On Error GoTo TrataErro
 
@@ -28,7 +65,8 @@ Public Sub Carregar_ARMPIL_CSV()
     If csvPath = "" Then GoTo Finaliza
 
     LoadArmpil csvPath
-    MsgBox "ARMPIL extraido e carregado com sucesso.", vbInformation
+    DeleteFileIfExists csvPath
+    NotifyLoadCompletion "ARMPIL", "o arquivo SELE/SELEC (.LST)"
 
 Finaliza:
     Exit Sub
@@ -44,8 +82,9 @@ Public Sub Carregar_ARMPIL_CSV_Manual()
     csvPath = PickFilePath("Selecione o arquivo ARMPIL.csv", "CSV", "*.csv")
     If csvPath = "" Then GoTo Finaliza
 
+    ClearStoredArmpilLanceLevelMap
     LoadArmpil csvPath
-    MsgBox "ARMPIL carregado com sucesso.", vbInformation
+    NotifyLoadCompletion "ARMPIL", "o arquivo SELE/SELEC (.LST)"
 
 Finaliza:
     Exit Sub
@@ -58,11 +97,11 @@ Public Sub Carregar_SELE_LST()
     On Error GoTo TrataErro
 
     Dim selePath As String
-    selePath = PickFilePath("Selecione o arquivo SELE.LST", "LST", "*.lst;*.LST")
+    selePath = PickFilePath("Selecione o arquivo SELE/SELEC (.LST)", "LST", "*.lst;*.LST")
     If selePath = "" Then GoTo Finaliza
     
     LoadSele selePath
-    MsgBox "SELE carregado com sucesso.", vbInformation
+    NotifyLoadCompletion "SELE/SELEC", "o arquivo ARMPIL (.PDF ou .CSV)"
     
 Finaliza:
     Exit Sub
@@ -104,6 +143,7 @@ Public Sub Atualizar_ARMPIL_Manual()
         GoTo Finaliza
     End If
 
+    ClearStoredArmpilLanceLevelMap
     stage = "atualizar RESULTADO"
     resultUpdated = CompareAndMark(False)
     stage = "ativar aba ARMPIL"
@@ -324,6 +364,7 @@ Public Sub Adicionar_Pilar()
     End If
 
     stage = "atualizar RESULTADO"
+    ClearStoredArmpilLanceLevelMap
     resultUpdated = CompareAndMark(False)
     stage = "ativar aba ARMPIL"
     wsArm.Activate

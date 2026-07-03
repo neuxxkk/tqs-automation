@@ -11,6 +11,8 @@ Public Function RunPythonArmpilExtractor() As String
     Dim errNum As Long
     Dim errDesc As String
     Dim pdfPath As String
+    Dim preparedPdfPath As String
+    Dim tempPdfPath As String
     Dim levelsCsv As String
     Dim allLevelsCsv As String
     Dim lanceMap As String
@@ -25,9 +27,13 @@ Public Function RunPythonArmpilExtractor() As String
     pdfPath = PickArmpilPdfPath()
     If pdfPath = "" Then GoTo Cleanup
 
+    stage = "preparar caminho do PDF"
+    preparedPdfPath = PrepareArmpilPdfPathForPython(pdfPath, tempPdfPath)
+    If preparedPdfPath = "" Then GoTo Cleanup
+
     Dim scriptPath As String
     stage = "localizar script Python"
-    scriptPath = GetArmpilScriptPath()
+    scriptPath = ResolveArmpilScriptPath()
     If scriptPath = "" Then GoTo Cleanup
 
     Dim pythonExe As String
@@ -38,7 +44,7 @@ Public Function RunPythonArmpilExtractor() As String
     End If
 
     stage = "ler niveis do PDF"
-    levelsCsv = GetArmpilLevels(pythonExe, pythonArgs, scriptPath, pdfPath, allLevelsCsv)
+    levelsCsv = GetArmpilLevels(pythonExe, pythonArgs, scriptPath, preparedPdfPath, allLevelsCsv)
 
     If levelsCsv <> "" Then
         stage = "mapear lances"
@@ -61,7 +67,7 @@ Public Function RunPythonArmpilExtractor() As String
     launcherFile = Environ$("TEMP") & Application.PathSeparator & "armpil_run_" & Format$(Now, "yyyymmdd_hhnnss") & ".cmd"
 
     stage = "executar extrator Python"
-    WriteTextFile launcherFile, BuildPythonLauncherScript(pythonExe, pythonArgs, scriptPath, resultFile, pdfPath, lanceMap)
+    WriteTextFile launcherFile, BuildPythonLauncherScript(pythonExe, pythonArgs, scriptPath, resultFile, preparedPdfPath, lanceMap)
 
     Set shellObj = CreateObject("WScript.Shell")
     exitCode = shellObj.Run("cmd.exe /d /c " & QuotePath(launcherFile), 0, True)
@@ -84,6 +90,8 @@ Public Function RunPythonArmpilExtractor() As String
         Err.Raise vbObjectError + 2002, , "O script Python terminou sem informar o CSV gerado."
     End If
 
+    SaveStoredArmpilLanceLevelMap lanceMap
+
     If Not FileExists(RunPythonArmpilExtractor) Then
         Err.Raise vbObjectError + 2003, , "CSV gerado não encontrado:" & vbCrLf & RunPythonArmpilExtractor
     End If
@@ -91,6 +99,7 @@ Public Function RunPythonArmpilExtractor() As String
 Cleanup:
     errNum = Err.Number
     errDesc = Err.Description
+    DeleteFileIfExists tempPdfPath
     Application.StatusBar = oldStatusBar
     If errNum <> 0 Then
         If stage <> "" Then
@@ -129,9 +138,232 @@ Public Function GetArmpilLevels(ByVal pythonExe As String, ByVal pythonArgs As S
     If allLevelsCsv = "" Then allLevelsCsv = GetArmpilLevels
 End Function
 
+Public Function ResolveArmpilScriptPath() As String
+    Dim fso As Object
+    Dim sep As String
+    Dim basePath As String
+    Dim candidate As String
+    Dim checkedPaths As String
+    Dim depth As Long
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    sep = Application.PathSeparator
+    basePath = ThisWorkbook.Path
+
+    For depth = 0 To 6
+        candidate = BuildChildPath(basePath, "src" & sep & "armpil_extractor.py")
+        If Dir$(candidate) <> "" Then
+            ResolveArmpilScriptPath = candidate
+            Exit Function
+        End If
+        checkedPaths = AppendCheckedPath(checkedPaths, candidate)
+
+        candidate = BuildChildPath(basePath, "armpil_extractor.py")
+        If Dir$(candidate) <> "" Then
+            ResolveArmpilScriptPath = candidate
+            Exit Function
+        End If
+        checkedPaths = AppendCheckedPath(checkedPaths, candidate)
+
+        If depth = 6 Then Exit For
+        If Not fso.FolderExists(basePath) Then Exit For
+        If StrComp(basePath, fso.GetParentFolderName(basePath), vbTextCompare) = 0 Then Exit For
+        basePath = fso.GetParentFolderName(basePath)
+        If Trim$(basePath) = "" Then Exit For
+    Next depth
+
+    Err.Raise vbObjectError + 2004, , _
+        "Arquivo armpil_extractor.py nao encontrado." & vbCrLf & _
+        "Locais verificados:" & vbCrLf & _
+        checkedPaths
+End Function
+
+Public Function BuildChildPath(ByVal basePath As String, ByVal relativePath As String) As String
+    If Right$(basePath, 1) = Application.PathSeparator Then
+        BuildChildPath = basePath & relativePath
+    Else
+        BuildChildPath = basePath & Application.PathSeparator & relativePath
+    End If
+End Function
+
+Public Function AppendCheckedPath(ByVal existingText As String, ByVal pathText As String) As String
+    If existingText = "" Then
+        AppendCheckedPath = pathText
+    ElseIf InStr(1, existingText, pathText, vbTextCompare) > 0 Then
+        AppendCheckedPath = existingText
+    Else
+        AppendCheckedPath = existingText & vbCrLf & pathText
+    End If
+End Function
+
 Public Function PickArmpilPdfPath() As String
     PickArmpilPdfPath = PickFilePath("Selecione o PDF ARMPIL", "PDF", "*.pdf")
 End Function
+
+Public Function PrepareArmpilPdfPathForPython(ByVal pdfPath As String, ByRef tempPdfPath As String) As String
+    Dim resolvedPath As String
+
+    resolvedPath = Trim$(pdfPath)
+    If resolvedPath = "" Then Exit Function
+
+    resolvedPath = ResolveMappedDrivePath(resolvedPath)
+
+    If IsRemotePdfPath(resolvedPath) Then
+        tempPdfPath = CopyPdfToLocalTemp(resolvedPath)
+        PrepareArmpilPdfPathForPython = tempPdfPath
+    Else
+        PrepareArmpilPdfPathForPython = resolvedPath
+    End If
+End Function
+
+Public Function ResolveMappedDrivePath(ByVal filePath As String) As String
+    Dim normalized As String
+    Dim driveRoot As String
+    Dim remoteRoot As String
+    Dim relativePart As String
+
+    normalized = Trim$(filePath)
+    If normalized = "" Then Exit Function
+
+    If Left$(normalized, 2) = "\\" Then
+        ResolveMappedDrivePath = normalized
+        Exit Function
+    End If
+
+    If Len(normalized) < 3 Then
+        ResolveMappedDrivePath = normalized
+        Exit Function
+    End If
+
+    If Mid$(normalized, 2, 2) <> ":\" Then
+        ResolveMappedDrivePath = normalized
+        Exit Function
+    End If
+
+    driveRoot = UCase$(Left$(normalized, 2))
+    remoteRoot = GetMappedDriveRemoteRoot(driveRoot)
+
+    If remoteRoot = "" Then
+        ResolveMappedDrivePath = normalized
+        Exit Function
+    End If
+
+    relativePart = Mid$(normalized, 3)
+    Do While Left$(relativePart, 1) = "\"
+        relativePart = Mid$(relativePart, 2)
+    Loop
+
+    If Right$(remoteRoot, 1) = "\" Then
+        ResolveMappedDrivePath = remoteRoot & relativePart
+    ElseIf relativePart <> "" Then
+        ResolveMappedDrivePath = remoteRoot & "\" & relativePart
+    Else
+        ResolveMappedDrivePath = remoteRoot
+    End If
+End Function
+
+Public Function GetMappedDriveRemoteRoot(ByVal driveRoot As String) As String
+    Dim networkObj As Object
+    Dim drives As Object
+    Dim i As Long
+    Dim localName As String
+
+    On Error GoTo Fallback
+
+    Set networkObj = CreateObject("WScript.Network")
+    Set drives = networkObj.EnumNetworkDrives
+
+    For i = 0 To drives.Count - 1 Step 2
+        localName = UCase$(Trim$(CStr(drives.Item(i))))
+        If localName = UCase$(Trim$(driveRoot)) Then
+            GetMappedDriveRemoteRoot = Trim$(CStr(drives.Item(i + 1)))
+            Exit Function
+        End If
+    Next i
+    Exit Function
+
+Fallback:
+    GetMappedDriveRemoteRoot = ""
+End Function
+
+Public Function IsRemotePdfPath(ByVal filePath As String) As Boolean
+    Dim normalized As String
+    Dim fso As Object
+    Dim driveName As String
+
+    normalized = Trim$(filePath)
+    If normalized = "" Then Exit Function
+
+    If Left$(normalized, 2) = "\\" Then
+        IsRemotePdfPath = True
+        Exit Function
+    End If
+
+    On Error GoTo Fallback
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    driveName = fso.GetDriveName(normalized)
+    If driveName <> "" Then
+        IsRemotePdfPath = (fso.GetDrive(driveName).DriveType = 3)
+    End If
+    Exit Function
+
+Fallback:
+    IsRemotePdfPath = False
+End Function
+
+Public Function CopyPdfToLocalTemp(ByVal sourcePath As String) As String
+    Dim fso As Object
+    Dim sourceFile As Object
+    Dim tempFolder As String
+    Dim targetPath As String
+    Dim fileName As String
+    Dim baseName As String
+    Dim extension As String
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(sourcePath) Then
+        Err.Raise vbObjectError + 2010, , "Arquivo PDF nao encontrado:" & vbCrLf & sourcePath
+    End If
+
+    tempFolder = Environ$("TEMP") & Application.PathSeparator & "ScriptsFormula" & Application.PathSeparator & "ARMPIL"
+    EnsureFolderExists tempFolder
+
+    Set sourceFile = fso.GetFile(sourcePath)
+    fileName = sourceFile.Name
+    baseName = fso.GetBaseName(fileName)
+    extension = fso.GetExtensionName(fileName)
+
+    targetPath = tempFolder & Application.PathSeparator & _
+        baseName & "_" & Format$(Now, "yyyymmdd_hhnnss") & "_" & Format$(CLng(Timer * 1000), "00000000") & _
+        IIf(extension <> "", "." & extension, "")
+
+    fso.CopyFile sourcePath, targetPath, True
+    CopyPdfToLocalTemp = targetPath
+End Function
+
+Public Sub EnsureFolderExists(ByVal folderPath As String)
+    Dim fso As Object
+    Dim parentPath As String
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Trim$(folderPath) = "" Then Exit Sub
+    If fso.FolderExists(folderPath) Then Exit Sub
+
+    parentPath = fso.GetParentFolderName(folderPath)
+    If parentPath <> "" And Not fso.FolderExists(parentPath) Then
+        EnsureFolderExists parentPath
+    End If
+
+    If Not fso.FolderExists(folderPath) Then fso.CreateFolder folderPath
+End Sub
+
+Public Sub DeleteFileIfExists(ByVal filePath As String)
+    If Trim$(filePath) = "" Then Exit Sub
+
+    On Error Resume Next
+    If Dir$(filePath) <> "" Then Kill filePath
+    On Error GoTo 0
+End Sub
 
 Public Function GetArmpilScriptPath() As String
     Dim sep As String
@@ -214,9 +446,9 @@ Public Function BuildPythonLauncherScript(ByVal exeName As String, ByVal exeArgs
     lines = "@echo off" & vbCrLf
     lines = lines & "setlocal" & vbCrLf
     lines = lines & "set ""ARMPIL_RESULT_FILE=" & resultFile & """" & vbCrLf
-    lines = lines & "set ""ARMPIL_OUTPUT_DIR=" & GetArmpilOutputDir() & """" & vbCrLf
     lines = lines & "set ""ARMPIL_PDF_PATH=" & pdfPath & """" & vbCrLf
     lines = lines & "set ""ARMPIL_KNOWN_LANCES=" & GetKnownLancesForPython() & """" & vbCrLf
+    lines = lines & "set ""ARMPIL_KNOWN_PILAR_LANCES=" & GetKnownPilarLancesForPython() & """" & vbCrLf
     If Trim$(lanceMap) <> "" Then
         lines = lines & "set ""ARMPIL_LANCE_MAP=" & lanceMap & """" & vbCrLf
     End If
@@ -238,18 +470,6 @@ Public Function BuildPythonCheckScript(ByVal exeName As String, ByVal exeArgs As
     lines = lines & "exit /b %errorlevel%" & vbCrLf
 
     BuildPythonCheckScript = lines
-End Function
-
-Public Function GetArmpilOutputDir() As String
-    Dim publicDir As String
-    publicDir = Environ$("PUBLIC")
-
-    If publicDir <> "" Then
-        GetArmpilOutputDir = publicDir & Application.PathSeparator & "Documents" & _
-            Application.PathSeparator & "Scripts Formula" & Application.PathSeparator & "ARMPIL"
-    Else
-        GetArmpilOutputDir = Environ$("TEMP")
-    End If
 End Function
 
 Public Function ExtractTaggedValue(ByVal text As String, ByVal tag As String) As String

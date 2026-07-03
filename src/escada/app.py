@@ -1,298 +1,251 @@
 from __future__ import annotations
 
+import html
+import base64
 import sys
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from escada.calculos import carregamento_lance
-from escada.defaults import edificio_metallo, escada_metallo
-from escada.desenho import desenhar_escada, posicionar_lances
-from escada.domain import Apoio, Edificio, Escada, Lance, Vao
-from escada.memoria import gerar_memoria_markdown, gerar_memoria_pdf
+from escada.calculos import calcular_escada
+from escada.defaults import entrada_padrao
+from escada.domain import (
+    EntradaEscada,
+    ResultadoEscada,
+    formatar_pavimento,
+    sanitize_filename_component,
+    validar_entrada,
+)
+from escada.memoria import gerar_pdf_relatorio, pdf_disponivel
 from ui import inject_formula_theme, render_page_header, render_sidebar_brand
 
 
-DEFAULTS_REV = "metallo_imagem_v4"
-POSICOES_HORARIAS = ["9h", "12h", "3h", "6h"]
-LAST_N_LANCES_KEY = f"{DEFAULTS_REV}_last_n_lances"
-
-
-def _descricao_fluxo_horario(n_lances: int) -> str:
-    partes = [
-        f"{i}o lance -> {POSICOES_HORARIAS[(i - 1) % len(POSICOES_HORARIAS)]}"
-        for i in range(1, n_lances + 1)
-    ]
-    return "; ".join(partes)
-
-
-def _apoio_para_opcao(apoio: Apoio) -> str:
-    if apoio.tipo == "lance":
-        return f"lance {apoio.referencia_lance}"
-    return apoio.tipo
-
-
-def _opcao_para_apoio(opcao: str) -> Apoio:
-    if opcao.startswith("lance "):
-        return Apoio(tipo="lance", referencia_lance=int(opcao.split()[1]))
-    return Apoio(tipo=opcao)  # type: ignore[arg-type]
-
-
-def _opcoes_apoio(indice_lance: int, n_lances: int) -> list[str]:
-    opcoes = ["laje", "viga", "pilar"]
-    opcoes.extend(f"lance {i}" for i in range(1, n_lances + 1) if i != indice_lance)
-    return opcoes
-
-
-def _lances_padrao_dois_lances() -> list[Lance]:
-    total_retangulo = 3.85
-    escada_central = 1.35
-    patamar = round((total_retangulo - escada_central) / 2, 3)
-
-    return [
-        Lance(
-            indice=1,
-            b=1.37,
-            h=0.12,
-            apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
-            vaos=[
-                Vao(tipo="patamar", L=patamar),
-                Vao(tipo="escada", L=escada_central),
-                Vao(tipo="patamar", L=patamar),
-            ],
-        ),
-        Lance(
-            indice=2,
-            b=1.215,
-            h=0.12,
-            apoios=[Apoio(tipo="laje"), Apoio(tipo="viga")],
-            vaos=[
-                Vao(tipo="patamar", L=patamar),
-                Vao(tipo="escada", L=escada_central),
-                Vao(tipo="patamar", L=patamar),
-            ],
-        ),
-    ]
-
-
-def _default_lance(indice: int, n_lances: int) -> Lance:
-    if n_lances == 2:
-        return _lances_padrao_dois_lances()[indice - 1]
-
-    padrao = escada_metallo().lances
-    if indice <= len(padrao):
-        return padrao[indice - 1]
-    apoios = [Apoio(tipo="laje"), Apoio(tipo="viga")]
-    if indice == 4:
-        apoios = [Apoio(tipo="laje"), Apoio(tipo="lance", referencia_lance=3)]
-    return Lance(
-        indice=indice,
-        b=1.20,
-        h=0.12,
-        apoios=apoios,
-        vaos=[Vao(tipo="patamar", L=2.00)],
+def _render_card(title: str, kicker: str, body_html: str) -> None:
+    st.markdown(
+        f"""
+        <div class="formula-card">
+            <span class="formula-kicker">{html.escape(kicker)}</span>
+            <h3>{html.escape(title)}</h3>
+            {body_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
-def _seed_lance_state(indice: int, lance: Lance) -> None:
-    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_apoio_1"] = _apoio_para_opcao(lance.apoios[0])
-    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_apoio_2"] = _apoio_para_opcao(lance.apoios[1])
-    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_b"] = float(lance.b)
-    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_h"] = float(lance.h)
-    st.session_state[f"{DEFAULTS_REV}_lance_{indice}_n_vaos"] = len(lance.vaos)
-
-    for j, vao in enumerate(lance.vaos, start=1):
-        st.session_state[f"{DEFAULTS_REV}_lance_{indice}_vao_{j}_tipo"] = vao.tipo
-        st.session_state[f"{DEFAULTS_REV}_lance_{indice}_vao_{j}_L"] = float(vao.L)
+def _render_list_card(title: str, kicker: str, items: list[str]) -> None:
+    list_html = "".join(f"<li>{html.escape(item)}</li>" for item in items)
+    _render_card(title, kicker, f"<ul>{list_html}</ul>")
 
 
-def _sincronizar_defaults_por_quantidade(n_lances: int) -> None:
-    ultimo_n_lances = st.session_state.get(LAST_N_LANCES_KEY)
-    if ultimo_n_lances != n_lances and n_lances == 2:
-        for indice, lance in enumerate(_lances_padrao_dois_lances(), start=1):
-            _seed_lance_state(indice, lance)
-    st.session_state[LAST_N_LANCES_KEY] = n_lances
-
-
-def _indice_padrao(opcoes: list[str], valor: str) -> int:
-    return opcoes.index(valor) if valor in opcoes else 0
-
-
-def _entrada_lance(indice: int, n_lances: int) -> Lance:
-    padrao = _default_lance(indice, n_lances)
-    opcoes = _opcoes_apoio(indice, n_lances)
-
-    apoio1 = st.selectbox(
-        "Apoio 1",
-        opcoes,
-        index=_indice_padrao(opcoes, _apoio_para_opcao(padrao.apoios[0])),
-        key=f"{DEFAULTS_REV}_lance_{indice}_apoio_1",
-    )
-    apoio2 = st.selectbox(
-        "Apoio 2",
-        opcoes,
-        index=_indice_padrao(opcoes, _apoio_para_opcao(padrao.apoios[1])),
-        key=f"{DEFAULTS_REV}_lance_{indice}_apoio_2",
-    )
-
-    col_b, col_h = st.columns(2)
-    b = col_b.number_input(
-        f"b{indice} (m)",
-        min_value=0.10,
-        value=float(padrao.b),
-        step=0.01,
-        format="%.3f",
-        key=f"{DEFAULTS_REV}_lance_{indice}_b",
-    )
-    h = col_h.number_input(
-        f"h{indice} (m)",
-        min_value=0.05,
-        value=float(padrao.h),
-        step=0.01,
-        format="%.3f",
-        key=f"{DEFAULTS_REV}_lance_{indice}_h",
-    )
-
-    n_vaos = st.number_input(
-        "Numero de vaos",
-        min_value=1,
-        max_value=8,
-        value=len(padrao.vaos),
-        step=1,
-        key=f"{DEFAULTS_REV}_lance_{indice}_n_vaos",
-    )
-
-    vaos: list[Vao] = []
-    for j in range(1, int(n_vaos) + 1):
-        default_vao = padrao.vaos[j - 1] if j <= len(padrao.vaos) else Vao("patamar", 1.0)
-        col_tipo, col_l = st.columns([1.05, 1])
-        tipo = col_tipo.selectbox(
-            f"Vao {j}",
-            ["patamar", "escada"],
-            index=0 if default_vao.tipo == "patamar" else 1,
-            key=f"{DEFAULTS_REV}_lance_{indice}_vao_{j}_tipo",
-        )
-        comprimento = col_l.number_input(
-            f"L{indice},{j} (m)",
-            min_value=0.05,
-            value=float(default_vao.L),
-            step=0.05,
-            format="%.3f",
-            key=f"{DEFAULTS_REV}_lance_{indice}_vao_{j}_L",
-        )
-        vaos.append(Vao(tipo=tipo, L=comprimento))  # type: ignore[arg-type]
-
-    return Lance(
-        indice=indice,
-        b=b,
-        h=h,
-        apoios=[_opcao_para_apoio(apoio1), _opcao_para_apoio(apoio2)],
-        vaos=vaos,
+def _render_cargas_card(entrada: EntradaEscada, resultado: ResultadoEscada) -> None:
+    _render_card(
+        "Cargas distribuidas (Q)",
+        "Carregamento",
+        f"""
+        <div class="formula-load-grid">
+            <div class="formula-load-row">
+                <div>
+                    <strong>Patamar</strong>
+                    <span>CP {entrada.carga_permanente_patamar_tf_m2:.3f} + CA {entrada.carga_acidental_patamar_tf_m2:.3f} + PP {resultado.peso_proprio_patamar_tf_m2:.3f}</span>
+                </div>
+                <strong>Q = {resultado.carga_total_patamar_tf_m2:.3f} tf/m2</strong>
+            </div>
+            <div class="formula-load-row">
+                <div>
+                    <strong>Escada</strong>
+                    <span>CP {entrada.carga_permanente_escada_tf_m2:.3f} + CA {entrada.carga_acidental_escada_tf_m2:.3f} + PP {resultado.peso_proprio_escada_tf_m2:.3f}</span>
+                </div>
+                <strong>Q = {resultado.carga_total_escada_tf_m2:.3f} tf/m2</strong>
+            </div>
+        </div>
+        """,
     )
 
 
-def _tabela_carregamentos(edificio: Edificio, escada: Escada) -> list[dict[str, object]]:
-    linhas: list[dict[str, object]] = []
-    for lance in escada.lances:
-        carga = carregamento_lance(edificio, lance)
-        for vao in carga.vaos:
-            linhas.append(
-                {
-                    "Lance": carga.indice,
-                    "Vao": vao.indice,
-                    "Tipo": vao.tipo,
-                    "L (m)": round(vao.L, 3),
-                    "h (m)": round(carga.h, 3),
-                    "PP (tF/m2)": round(carga.pp, 3),
-                    "q (tF/m2)": round(vao.q, 3),
-                    "Apoia em lance": "sim" if lance.apoia_em_lance else "nao",
-                }
-            )
-    return linhas
+def _imagem_card_html(imagem: Any | None) -> str:
+    if not imagem:
+        return "<p>Nenhuma imagem enviada.</p>"
+
+    mime_type = getattr(imagem, "type", "image/png")
+    encoded = base64.b64encode(imagem.getvalue()).decode("ascii")
+    return (
+        "<div class='formula-upload-preview'>"
+        f"<img src='data:{html.escape(mime_type)};base64,{encoded}' alt='Imagem da escada'>"
+        "</div>"
+    )
 
 
-def _build_sidebar() -> tuple[Edificio, Escada]:
-    edificio_padrao = edificio_metallo()
-    escada_padrao = escada_metallo()
+def _build_sidebar_inputs() -> tuple[EntradaEscada, Any | None]:
+    padrao = entrada_padrao()
 
     render_sidebar_brand(
         tool_name="Calculo de Escadas",
-        description="Edite lances, apoios e vaos enquanto o preview e a memoria acompanham cada ajuste.",
+        description="Ferramenta de memoria estrutural para cargas distribuidas de patamares e escadas.",
     )
 
-    st.sidebar.subheader("Dados do edificio")
-    nome = st.sidebar.text_input("Nome", value=edificio_padrao.nome)
+    st.sidebar.subheader("Projeto")
+    nome_projeto = st.sidebar.text_input("Nome do projeto / escada", value=padrao.nome_projeto)
     col_li, col_lf = st.sidebar.columns(2)
     laje_inicial = col_li.number_input(
-        "Laje inicial",
+        "Da laje",
         min_value=0,
-        value=escada_padrao.laje_inicial,
+        value=padrao.laje_inicial,
         step=1,
     )
+    laje_final_minima = int(laje_inicial) + 1
+    laje_final_default = max(padrao.laje_final, laje_final_minima)
     laje_final = col_lf.number_input(
-        "Laje final",
-        min_value=1,
-        value=escada_padrao.laje_final,
+        "Ate a laje",
+        min_value=laje_final_minima,
+        value=laje_final_default,
         step=1,
     )
-    fck = st.sidebar.number_input("fck (MPa)", min_value=10.0, value=edificio_padrao.fck, step=1.0)
-    cp = st.sidebar.number_input(
-        "CP (tF/m2)",
+    st.sidebar.caption(f"Pavimento: {formatar_pavimento(int(laje_inicial), int(laje_final))}")
+    imagem = st.sidebar.file_uploader(
+        "Imagem da escada",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=False,
+    )
+
+    st.sidebar.subheader("Geometria")
+    col_ep, col_ee = st.sidebar.columns(2)
+    espessura_patamar_cm = col_ep.number_input(
+        "Patamar h (cm)",
+        min_value=1.0,
+        value=padrao.espessura_patamar_cm,
+        step=1.0,
+        format="%.1f",
+    )
+    espessura_escada_cm = col_ee.number_input(
+        "Escada h (cm)",
+        min_value=1.0,
+        value=padrao.espessura_escada_cm,
+        step=1.0,
+        format="%.1f",
+    )
+
+    st.sidebar.subheader("Cargas do patamar")
+    carga_permanente_patamar = st.sidebar.number_input(
+        "CP geral do patamar (tf/m2)",
         min_value=0.0,
-        value=edificio_padrao.cp,
+        value=padrao.carga_permanente_patamar_tf_m2,
         step=0.01,
         format="%.3f",
     )
-    ca = st.sidebar.number_input(
-        "CA (tF/m2)",
+    carga_acidental_patamar = st.sidebar.number_input(
+        "CA geral do patamar (tf/m2)",
         min_value=0.0,
-        value=edificio_padrao.ca,
+        value=padrao.carga_acidental_patamar_tf_m2,
         step=0.01,
         format="%.3f",
     )
 
-    st.sidebar.subheader("Ferramentas de desenho")
-    n_lances = st.sidebar.number_input(
-        "Numero de lances",
-        min_value=1,
-        max_value=12,
-        value=escada_padrao.n_lances,
-        step=1,
+    st.sidebar.subheader("Cargas da escada")
+    carga_permanente_escada = st.sidebar.number_input(
+        "CP geral da escada (tf/m2)",
+        min_value=0.0,
+        value=padrao.carga_permanente_escada_tf_m2,
+        step=0.01,
+        format="%.3f",
     )
-    st.sidebar.caption("Fluxo horario:")
-    st.sidebar.caption(_descricao_fluxo_horario(int(n_lances)))
-    _sincronizar_defaults_por_quantidade(int(n_lances))
+    carga_acidental_escada = st.sidebar.number_input(
+        "CA geral da escada (tf/m2)",
+        min_value=0.0,
+        value=padrao.carga_acidental_escada_tf_m2,
+        step=0.01,
+        format="%.3f",
+    )
 
-    st.sidebar.subheader("Lances")
-    lances: list[Lance] = []
-    for i in range(1, int(n_lances) + 1):
-        with st.sidebar.expander(f"Lance {i}", expanded=i <= 2):
-            lances.append(_entrada_lance(i, int(n_lances)))
-
-    edificio = Edificio(nome=nome, fck=fck, cp=cp, ca=ca)
-    escada = Escada(
+    entrada = EntradaEscada(
+        nome_projeto=nome_projeto,
         laje_inicial=int(laje_inicial),
         laje_final=int(laje_final),
-        lances=lances,
+        espessura_patamar_cm=espessura_patamar_cm,
+        espessura_escada_cm=espessura_escada_cm,
+        carga_permanente_patamar_tf_m2=carga_permanente_patamar,
+        carga_acidental_patamar_tf_m2=carga_acidental_patamar,
+        carga_permanente_escada_tf_m2=carga_permanente_escada,
+        carga_acidental_escada_tf_m2=carga_acidental_escada,
     )
-    return edificio, escada
+    return entrada, imagem
 
 
-def _render_summary(edificio: Edificio, escada: Escada) -> None:
-    comprimento_total = sum(lance.comprimento_total for lance in escada.lances)
+def _render_formula_card(entrada: EntradaEscada, resultado: ResultadoEscada) -> None:
+    _render_card(
+        "Equacoes de carregamento",
+        "Memoria de calculo",
+        (
+            "<div class='formula-code'>"
+            f"Q_patamar = {entrada.carga_permanente_patamar_tf_m2:.3f} + "
+            f"{entrada.carga_acidental_patamar_tf_m2:.3f} + "
+            f"{resultado.peso_proprio_patamar_tf_m2:.3f} = "
+            f"{resultado.carga_total_patamar_tf_m2:.3f} tf/m2<br>"
+            f"Q_escada = {entrada.carga_permanente_escada_tf_m2:.3f} + "
+            f"{entrada.carga_acidental_escada_tf_m2:.3f} + "
+            f"{resultado.peso_proprio_escada_tf_m2:.3f} = "
+            f"{resultado.carga_total_escada_tf_m2:.3f} tf/m2"
+            "</div>"
+        ),
+    )
+
+
+def _render_resultados(
+    entrada: EntradaEscada,
+    resultado: ResultadoEscada,
+    imagem: Any | None,
+) -> None:
+    st.markdown(
+        f"""
+        <div class="formula-note">
+            <strong>Carregamentos distribuidos prontos.</strong>
+            O patamar resulta em <span class="formula-mono">Q = {resultado.carga_total_patamar_tf_m2:.3f} tf/m2</span>
+            e a escada em <span class="formula-mono">Q = {resultado.carga_total_escada_tf_m2:.3f} tf/m2</span>.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Lances", str(escada.n_lances))
-    col2.metric("Comprimento total (m)", f"{comprimento_total:.3f}")
-    col3.metric("fck (MPa)", f"{edificio.fck:.0f}")
-    col4.metric("CP + CA (tF/m2)", f"{(edificio.cp + edificio.ca):.3f}")
+    col1.metric("PP patamar (tf/m2)", f"{resultado.peso_proprio_patamar_tf_m2:.3f}")
+    col2.metric("Q patamar (tf/m2)", f"{resultado.carga_total_patamar_tf_m2:.3f}")
+    col3.metric("PP escada (tf/m2)", f"{resultado.peso_proprio_escada_tf_m2:.3f}")
+    col4.metric("Q escada (tf/m2)", f"{resultado.carga_total_escada_tf_m2:.3f}")
 
+    col_preview, col_memoria = st.columns([1.15, 1], gap="large")
 
-def _render_preview(escada: Escada) -> None:
-    fig = desenhar_escada(escada, layout="horario", margem_relativa=0.40)
-    st.pyplot(fig, clear_figure=True, use_container_width=True)
+    with col_preview:
+        _render_card(
+            "Imagem da escada",
+            "Referencia do usuario",
+            _imagem_card_html(imagem),
+        )
+
+    with col_memoria:
+        _render_cargas_card(entrada, resultado)
+
+    _render_formula_card(entrada, resultado)
+
+    if pdf_disponivel():
+        imagem_bytes = imagem.getvalue() if imagem else None
+        imagem_mime_type = getattr(imagem, "type", None) if imagem else None
+        pdf_bytes = gerar_pdf_relatorio(entrada, resultado, imagem_bytes, imagem_mime_type)
+        file_name = sanitize_filename_component(entrada.nome_projeto)
+        st.download_button(
+            label="Baixar PDF do relatorio",
+            data=pdf_bytes,
+            file_name=f"Calculo_Escada_{file_name}.pdf",
+            mime="application/pdf",
+            use_container_width=False,
+        )
+    else:
+        st.warning(
+            "A biblioteca 'fpdf' nao esta instalada. Para habilitar a exportacao do PDF, execute: pip install fpdf"
+        )
 
 
 def main() -> None:
@@ -303,49 +256,22 @@ def main() -> None:
         kicker="Engenharia Estrutural",
         title="Calculo de Escadas",
         description=(
-            "Modelagem de lances, patamares e apoios com fluxo horario fixo, preview esquematico, "
-            "carregamentos e memoria de calculo acompanhando os controles em tempo real."
+            "Analise de cargas distribuidas para patamares e escadas, com imagem de referencia "
+            "fornecida pelo usuario e exportacao de relatorio tecnico."
         ),
     )
 
     with st.sidebar:
-        try:
-            edificio, escada = _build_sidebar()
-            posicionar_lances(escada, layout="horario")
-        except ValueError as exc:
-            st.error(str(exc))
-            st.stop()
+        entrada, imagem = _build_sidebar_inputs()
 
-    _render_summary(edificio, escada)
+    erros = validar_entrada(entrada)
+    if erros:
+        for erro in erros:
+            st.error(erro)
+        return
 
-    memoria_md = gerar_memoria_markdown(edificio, escada)
-    memoria_pdf = gerar_memoria_pdf(edificio, escada, layout="horario")
-
-    tabs = st.tabs(["Preview", "Carregamentos", "Memoria"])
-
-    with tabs[0]:
-        _render_preview(escada)
-
-    with tabs[1]:
-        st.dataframe(_tabela_carregamentos(edificio, escada), use_container_width=True)
-
-    with tabs[2]:
-        col_md, col_pdf = st.columns(2)
-        col_md.download_button(
-            "Baixar Markdown",
-            data=memoria_md.encode("utf-8"),
-            file_name="memoria_escada.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-        col_pdf.download_button(
-            "Exportar PDF",
-            data=memoria_pdf,
-            file_name="memoria_escada.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
-        st.markdown(memoria_md)
+    resultado = calcular_escada(entrada)
+    _render_resultados(entrada, resultado, imagem)
 
 
 if __name__ == "__main__":

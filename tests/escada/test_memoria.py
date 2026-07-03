@@ -1,46 +1,34 @@
 from __future__ import annotations
 
-import re
-
-from escada.defaults import edificio_metallo, escada_metallo
-from escada.memoria import gerar_memoria_markdown, gerar_memoria_pdf
-
-
-def test_memoria_markdown_contem_dados_principais():
-    memoria = gerar_memoria_markdown(edificio_metallo(), escada_metallo())
-
-    assert "# Memória de cálculo da 1ª à 2ª laje - Sudoeste - Ed. Metallo" in memoria
-    assert "PP₁ = 2,5 × 0,120 = 0,300 tF·m⁻²" in memoria
-    assert "q₃,₁ = 0,100 + 0,250 + PP₃ + 0,300 = 0,950" in memoria
-    assert "tF/m2" not in memoria
-    assert " * " not in memoria
-    assert "Observação" not in memoria
-    assert "## Dados de entrada" not in memoria
-    assert "## Geometria e apoios" not in memoria
-    assert "## Fórmulas adotadas" not in memoria
-    assert "| 3 | 1 | escada | 1,375 | 0,300 | 0,950 |" in memoria
+from escada.calculos import calcular_escada
+from escada.defaults import entrada_padrao
+from escada.memoria import gerar_pdf_relatorio, pdf_disponivel
 
 
-def test_memoria_markdown_tem_mesma_ordem_do_pdf():
-    memoria = gerar_memoria_markdown(edificio_metallo(), escada_metallo())
-
-    assert memoria.index("# Memória de cálculo") < memoria.index("## Carregamentos")
-    assert memoria.index("## Carregamentos") < memoria.index("## Desenvolvimento dos cálculos")
+def test_pdf_disponivel():
+    assert pdf_disponivel() is True
 
 
-def test_memoria_pdf_gera_bytes_pdf():
-    pdf = gerar_memoria_pdf(edificio_metallo(), escada_metallo())
+def test_pdf_gera_bytes_pdf_sem_imagem():
+    entrada = entrada_padrao()
+    resultado = calcular_escada(entrada)
+
+    pdf = gerar_pdf_relatorio(entrada, resultado)
 
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 1000
-    assert len(re.findall(rb"/Type\s*/Page\b", pdf)) == 1
 
 
-def test_tabela_carregamentos_markdown_nao_e_interrompida():
-    memoria = gerar_memoria_markdown(edificio_metallo(), escada_metallo())
-    trecho = memoria.split("## Carregamentos", maxsplit=1)[1]
-    tabela, _detalhe = trecho.split("## Desenvolvimento dos cálculos", maxsplit=1)
-    linhas_tabela = [linha for linha in tabela.splitlines() if linha.startswith("|")]
+def test_pdf_aceita_imagem_png_minima():
+    entrada = entrada_padrao()
+    resultado = calcular_escada(entrada)
+    png_1x1 = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4"
+        b"\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05"
+        b"\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
 
-    assert len(linhas_tabela) >= 3
-    assert all(linha.count("|") == linhas_tabela[0].count("|") for linha in linhas_tabela)
+    pdf = gerar_pdf_relatorio(entrada, resultado, png_1x1, "image/png")
+
+    assert pdf.startswith(b"%PDF")
