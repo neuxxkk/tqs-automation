@@ -136,11 +136,6 @@ def gerar_pdf_relatorio(
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 9, "", 1, 1, "L")
 
-    pdf.set_y(250)
-    pdf.set_font("Arial", "I", 8)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 5, "Relatorio gerado automaticamente pelo Sistema de Automacao TQS", 0, 0, "C")
-
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         pdf.output(tmp.name)
         tmp.seek(0)

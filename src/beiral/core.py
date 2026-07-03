@@ -26,6 +26,7 @@ class EntradaBeiral:
     armacao_minima_bitola_mm: float = 0.0
     armacao_minima_espacamento_cm: float = 0.0
     pavimento: str = ""
+    elemento: str = ""
 
 
 @dataclass(slots=True)
